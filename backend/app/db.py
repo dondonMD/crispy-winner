@@ -11,37 +11,45 @@ class Base(DeclarativeBase):
 
 
 class Record(Base):
-    __tablename__ = 'records'
+    __tablename__ = "records"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     kind: Mapped[str] = mapped_column(String(32))
-    mint: Mapped[str] = mapped_column(String(64), default='')
+    mint: Mapped[str] = mapped_column(String(64), default="")
     ts: Mapped[float] = mapped_column(Float)
-    session: Mapped[str] = mapped_column(String(40), default='')
+    session: Mapped[str] = mapped_column(String(40), default="")
     payload: Mapped[str] = mapped_column(Text)
-    __table_args__ = (Index('ix_kind_ts', 'kind', 'ts'), Index('ix_mint_ts', 'mint', 'ts'),
-                      Index('ix_session_kind', 'session', 'kind'))
+    __table_args__ = (
+        Index("ix_kind_ts", "kind", "ts"),
+        Index("ix_mint_ts", "mint", "ts"),
+        Index("ix_session_kind", "session", "kind"),
+    )
 
 
 class Database:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
-        self.engine = create_engine(f'sqlite:///{path}', connect_args={'check_same_thread': False})
+        self.engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False})
 
-        @event.listens_for(self.engine, 'connect')
+        @event.listens_for(self.engine, "connect")
         def configure(dbapi, _):
-            dbapi.execute('PRAGMA journal_mode=WAL')
-            dbapi.execute('PRAGMA busy_timeout=5000')
-            dbapi.execute('PRAGMA synchronous=NORMAL')
-            dbapi.execute('PRAGMA foreign_keys=ON')
+            dbapi.execute("PRAGMA journal_mode=WAL")
+            dbapi.execute("PRAGMA busy_timeout=5000")
+            dbapi.execute("PRAGMA synchronous=NORMAL")
+            dbapi.execute("PRAGMA foreign_keys=ON")
 
         # CLI/startup runs Alembic; tests may provision metadata directly.
         self.sessions = sessionmaker(self.engine)
 
-    def add(self, kind, payload, mint='', session='', ts=None):
+    def add(self, kind, payload, mint="", session="", ts=None):
         with self.sessions.begin() as db:
-            row = Record(kind=kind, mint=mint, session=session, ts=time.time() if ts is None else ts,
-                         payload=json.dumps(payload, separators=(',', ':'), allow_nan=False))
+            row = Record(
+                kind=kind,
+                mint=mint,
+                session=session,
+                ts=time.time() if ts is None else ts,
+                payload=json.dumps(payload, separators=(",", ":"), allow_nan=False),
+            )
             db.add(row)
             db.flush()
             return row.id
@@ -54,8 +62,10 @@ class Database:
             query = query.where(Record.session == session)
         with self.sessions() as db:
             rows = db.scalars(query.order_by(Record.id.desc()).limit(min(limit, 10000))).all()
-            return [dict(id=r.id, ts=r.ts, mint=r.mint, session=r.session, **json.loads(r.payload))
-                    for r in reversed(rows)]
+            return [
+                dict(id=r.id, ts=r.ts, mint=r.mint, session=r.session, **json.loads(r.payload))
+                for r in reversed(rows)
+            ]
 
     def iterate(self, kind, session=None):
         cursor = 0
@@ -67,34 +77,38 @@ class Database:
                 batch = db.scalars(query.order_by(Record.id).limit(500)).all()
                 if not batch:
                     return
-                result = [dict(id=r.id, ts=r.ts, mint=r.mint, session=r.session, **json.loads(r.payload))
-                          for r in batch]
+                result = [
+                    dict(id=r.id, ts=r.ts, mint=r.mint, session=r.session, **json.loads(r.payload))
+                    for r in batch
+                ]
             for row in result:
-                cursor = row['id']
+                cursor = row["id"]
                 yield row
 
     def size(self):
-        return sum(p.stat().st_size for p in self.path.parent.glob(self.path.name + '*') if p.is_file())
+        return sum(p.stat().st_size for p in self.path.parent.glob(self.path.name + "*") if p.is_file())
 
     def retention(self, settings, now=None):
         now = time.time() if now is None else now
-        groups = {'event': settings.raw_retention_hours * 3600,
-                  'snapshot': settings.snapshot_retention_days * 86400,
-                  'security': settings.snapshot_retention_days * 86400,
-                  'transition': settings.snapshot_retention_days * 86400,
-                  'signal': settings.outcome_retention_days * 86400,
-                  'outcome': settings.outcome_retention_days * 86400}
+        groups = {
+            "event": settings.raw_retention_hours * 3600,
+            "snapshot": settings.snapshot_retention_days * 86400,
+            "security": settings.snapshot_retention_days * 86400,
+            "transition": settings.snapshot_retention_days * 86400,
+            "signal": settings.outcome_retention_days * 86400,
+            "outcome": settings.outcome_retention_days * 86400,
+        }
         count = 0
         with self.sessions.begin() as db:
             for kind, seconds in groups.items():
                 result = db.execute(delete(Record).where(Record.kind == kind, Record.ts < now - seconds))
                 count += result.rowcount
         with self.engine.connect() as conn:
-            conn.exec_driver_sql('PRAGMA wal_checkpoint(TRUNCATE)')
+            conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
         return count
 
     def optimize(self):
         with self.engine.connect() as conn:
-            conn.exec_driver_sql('PRAGMA wal_checkpoint(TRUNCATE)')
-            conn.exec_driver_sql('VACUUM')
-            conn.exec_driver_sql('PRAGMA optimize')
+            conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.exec_driver_sql("VACUUM")
+            conn.exec_driver_sql("PRAGMA optimize")
