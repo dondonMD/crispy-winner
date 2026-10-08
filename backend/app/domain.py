@@ -136,6 +136,8 @@ class Token:
     grad_high: float = 0
     grad_low: float = math.inf
     last_signal: float = 0
+    last_analysis: float = 0
+    viability_key: tuple | None = None
     last_security: float = 0
     degraded: bool = False
     disagreement: bool = False

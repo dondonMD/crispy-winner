@@ -342,15 +342,25 @@ class RadarEngine:
         return True
 
     def analyse(self, token, now):
+        token.last_analysis = now
         token.features = calculate_features(token, now)
         token.scores = score_token(token, now)
         holdout = self.lab.get("holdout", {})
         # A descriptive dashboard split is not sufficient approval. Frozen prospective evidence required.
         evidence = self.approved_evidence
         edge = evidence.get("expectancy_net_pct") if evidence else None
-        token.viability = self.sizer.size(
-            self.paper.state["cash"], token.liquidity, edge, token.features["180"]["volatility_pct"]
+        key = (
+            self.paper.state["cash"],
+            token.liquidity,
+            edge,
+            5 / max(5, token.features["180"]["volatility_pct"]),
+            token.features["180"]["volatility_pct"] if edge is not None else None,
         )
+        if key != token.viability_key:
+            token.viability = self.sizer.size(
+                self.paper.state["cash"], token.liquidity, edge, token.features["180"]["volatility_pct"]
+            )
+            token.viability_key = key
         healthy = self.settings.mode == "DEMO" or (
             self.pump.health["connected"] and self.rpc.health["connected"] and self.dex.health["connected"]
         )
@@ -496,7 +506,8 @@ class RadarEngine:
                 for event in self.queue.drain(100):
                     self.process(event, now)
                 for token in list(self.tokens.values()):
-                    self.analyse(token, now)
+                    if now - token.last_analysis >= 1:
+                        self.analyse(token, now)
                     if now - token.last_event > 300 and token.mint not in self.paper.state["positions"]:
                         from backend.app.domain import TRANSITIONS
 
@@ -597,6 +608,7 @@ class RadarEngine:
                 **self.metrics,
                 "active_candidates": len(tokens),
                 "deep_monitored": len(self.deep_mints()),
+                "deep_subscriptions": len(self.pump.subscribed),
                 "queue_size": len(self.queue.heap),
                 "queue_limit": self.queue.maximum,
                 "dropped_events": self.queue.dropped,
