@@ -19,11 +19,11 @@ SCENARIOS = [
 ]
 
 
-def demo_events(start, tick, seed=47):
+def demo_events(start, tick, seed=47, namespace=""):
     rng = random.Random(seed + tick)
     events = []
     for i, scenario in enumerate(SCENARIOS):
-        mint = f"DEMO{i:02d}simulated"
+        mint = f"DEMO{i:02d}{namespace}simulated"
         ts = start + tick
         if tick == 0:
             events.append(

@@ -27,7 +27,7 @@ DANGEROUS_EXTENSIONS = {
 }
 
 
-def analyse_security(account, supply, largest, details, creator, excluded, now):
+def analyse_security(account, supply, largest, details, creator, excluded, now, mint=None):
     hard, warnings, observations = [], [], []
     quality = "VERIFIED"
     if not account or not supply:
@@ -46,9 +46,15 @@ def analyse_security(account, supply, largest, details, creator, excluded, now):
         quality = "UNKNOWN"
         warnings.append("Mint parser unavailable")
     for authority in ["mintAuthority", "freezeAuthority"]:
+        if authority not in info:
+            quality = "UNKNOWN"
+            warnings.append(f"Missing authority field: {authority}")
         if info.get(authority):
             hard.append(f"Active {authority}")
     extensions = info.get("extensions", [])
+    if program == TOKEN_2022 and "extensions" not in info and account.get("space", 82) > 82:
+        quality = "UNKNOWN"
+        warnings.append("Token-2022 extensions not parsed")
     if program == TOKEN_2022:
         observations.append("Token-2022 is not inherently malicious")
         for ext in extensions:
@@ -72,7 +78,7 @@ def analyse_security(account, supply, largest, details, creator, excluded, now):
     for item, detail in zip(largest, details):
         parsed = (detail or {}).get("data", {}).get("parsed", {}).get("info", {})
         owner = parsed.get("owner")
-        if parsed.get("mint") != info.get("mint", parsed.get("mint")) or not owner:
+        if (mint is not None and parsed.get("mint") != mint) or not owner:
             quality = "UNKNOWN"
             warnings.append("Holder ownership unavailable")
             continue
@@ -99,7 +105,13 @@ def analyse_security(account, supply, largest, details, creator, excluded, now):
         "data_quality": quality,
         "last_updated": now,
         "token_program": program,
-        "extensions": extensions,
+        "extensions": [
+            {
+                "extension": e.get("extension", "unknown"),
+                "state": e.get("state", {}) if e.get("extension") in DANGEROUS_EXTENSIONS else {},
+            }
+            for e in extensions
+        ],
         "supply_raw": str(total),
         "top_1_independent_pct": percentages[0] if percentages else None,
         "top_5_independent_pct": sum(percentages[:5]) if percentages else None,

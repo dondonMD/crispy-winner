@@ -40,7 +40,7 @@ def test_pump_normalization():
     e = p.normalize(
         {"txType": "buy", "mint": MINT, "signature": "sig", "solAmount": 2, "traderPublicKey": "wallet"}, 100
     )
-    assert e.currency == "SOL" and e.volume == 2 and e.price is None
+    assert e.currency == "unknown" and e.volume == 2 and e.price is None
 
 
 def report(program=TOKEN_PROGRAM, extensions=None):
@@ -103,3 +103,65 @@ async def test_http_errors_bounded(monkeypatch):
         await p.request("GET", "https://example.test")
     assert len(calls) == 3 and not p.health["connected"]
     await p.close()
+
+
+async def test_malformed_json_timeout_and_size(monkeypatch):
+    async def no_wait(*args):
+        pass
+
+    monkeypatch.setattr("backend.app.providers.asyncio.sleep", no_wait)
+    for response in [httpx.Response(200, content=b"not-json"), httpx.Response(200, content=b"x" * 2_000_001)]:
+        provider = HttpProvider(
+            "test", 100000, httpx.AsyncClient(transport=httpx.MockTransport(lambda r: response))
+        )
+        with pytest.raises(RuntimeError):
+            await provider.request("GET", "https://example.test")
+        assert provider.health["errors"] == 3
+        await provider.close()
+
+    def timeout(request):
+        raise httpx.ReadTimeout("slow provider")
+
+    provider = HttpProvider("test", 100000, httpx.AsyncClient(transport=httpx.MockTransport(timeout)))
+    with pytest.raises(RuntimeError):
+        await provider.request("GET", "https://example.test")
+    assert provider.health["errors"] == 3
+    await provider.close()
+
+
+async def test_websocket_disconnect_reconnect_resubscribe(monkeypatch):
+    import asyncio
+    from websockets.exceptions import ConnectionClosedError
+
+    sent = []
+    connections = []
+
+    class Socket:
+        async def send(self, message):
+            sent.append(message)
+
+        async def recv(self):
+            if len(connections) > 1:
+                raise asyncio.CancelledError()
+            raise ConnectionClosedError(None, None)
+
+    class Connection:
+        async def __aenter__(self):
+            connections.append(1)
+            return Socket()
+
+        async def __aexit__(self, *args):
+            return False
+
+    async def no_sleep(*args):
+        pass
+
+    monkeypatch.setattr("backend.app.providers.websockets.connect", lambda *a, **k: Connection())
+    monkeypatch.setattr("backend.app.providers.asyncio.sleep", no_sleep)
+    provider = PumpPortalProvider(Settings(), lambda e: None, lambda: [])
+    with pytest.raises(asyncio.CancelledError):
+        await provider.run()
+    assert provider.health["reconnects"] == 1
+    assert len(connections) == 2
+    assert sum("subscribeNewToken" in s for s in sent) == 2
+    assert not any("subscribeTokenTrade" in s for s in sent)

@@ -25,6 +25,12 @@ class Record(Base):
     )
 
 
+class EventIdentity(Base):
+    __tablename__ = "event_identities"
+    event_id: Mapped[str] = mapped_column(String(150), primary_key=True)
+    ts: Mapped[float] = mapped_column(Float, index=True)
+
+
 class Database:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -40,6 +46,15 @@ class Database:
 
         # CLI/startup runs Alembic; tests may provision metadata directly.
         self.sessions = sessionmaker(self.engine)
+
+    def reserve_event(self, event_id, ts):
+        from sqlalchemy.dialects.sqlite import insert
+
+        with self.sessions.begin() as db:
+            result = db.execute(
+                insert(EventIdentity).values(event_id=event_id, ts=ts).on_conflict_do_nothing()
+            )
+            return getattr(result, "rowcount", 0) == 1
 
     def add(self, kind, payload, mint="", session="", ts=None):
         with self.sessions.begin() as db:
@@ -63,7 +78,7 @@ class Database:
         with self.sessions() as db:
             rows = db.scalars(query.order_by(Record.id.desc()).limit(min(limit, 10000))).all()
             return [
-                dict(id=r.id, ts=r.ts, mint=r.mint, session=r.session, **json.loads(r.payload))
+                {**json.loads(r.payload), "id": r.id, "ts": r.ts, "mint": r.mint, "session": r.session}
                 for r in reversed(rows)
             ]
 
@@ -78,7 +93,7 @@ class Database:
                 if not batch:
                     return
                 result = [
-                    dict(id=r.id, ts=r.ts, mint=r.mint, session=r.session, **json.loads(r.payload))
+                    {**json.loads(r.payload), "id": r.id, "ts": r.ts, "mint": r.mint, "session": r.session}
                     for r in batch
                 ]
             for row in result:
@@ -94,15 +109,22 @@ class Database:
             "event": settings.raw_retention_hours * 3600,
             "snapshot": settings.snapshot_retention_days * 86400,
             "security": settings.snapshot_retention_days * 86400,
+            "creator_profile": settings.snapshot_retention_days * 86400,
+            "graduation": settings.snapshot_retention_days * 86400,
+            "session": settings.outcome_retention_days * 86400,
+            "session_context": settings.outcome_retention_days * 86400,
             "transition": settings.snapshot_retention_days * 86400,
             "signal": settings.outcome_retention_days * 86400,
             "outcome": settings.outcome_retention_days * 86400,
         }
         count = 0
         with self.sessions.begin() as db:
+            db.execute(
+                delete(EventIdentity).where(EventIdentity.ts < now - settings.raw_retention_hours * 3600)
+            )
             for kind, seconds in groups.items():
                 result = db.execute(delete(Record).where(Record.kind == kind, Record.ts < now - seconds))
-                count += result.rowcount
+                count += getattr(result, "rowcount", 0)
         with self.engine.connect() as conn:
             conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
         return count

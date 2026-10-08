@@ -4,6 +4,7 @@ import logging
 import os
 import random
 import time
+from typing import Any
 from collections import OrderedDict
 from urllib.parse import urlencode
 
@@ -39,7 +40,7 @@ class HttpProvider:
         self.name = name
         self.client = client or httpx.AsyncClient(timeout=12, follow_redirects=False)
         self.limiter = AsyncRateLimiter(rate)
-        self.health = {
+        self.health: dict[str, Any] = {
             "connected": False,
             "last_success": 0,
             "last_event": 0,
@@ -107,6 +108,8 @@ class SolanaProvider(HttpProvider):
     def __init__(self, client=None):
         super().__init__("Solana RPC", 2, client)
         self.url = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
+        self.global_cache = None
+        self.global_cached_at = 0.0
 
     async def rpc(self, method, params):
         data = await self.request(
@@ -136,10 +139,22 @@ class SolanaProvider(HttpProvider):
         curve, _ = Pubkey.find_program_address(
             [b"bonding-curve", bytes(Pubkey.from_string(mint))], Pubkey.from_string(PUMP_PROGRAM)
         )
-        excluded = set(known_accounts or []) | {str(curve), "11111111111111111111111111111111"}
+        excluded = {str(curve), "11111111111111111111111111111111"}
+        verified_pools = []
+        from backend.app.onchain import parse_pool
+
+        for pair in sorted(known_accounts or [])[:2]:
+            pool = await self.rpc("getAccountInfo", [pair, {"encoding": "base64", "commitment": "confirmed"}])
+            try:
+                parsed_pool = parse_pool(pool.get("value"), mint)
+            except ValueError:
+                continue
+            excluded.update({pair, parsed_pool["base_account"], parsed_pool["quote_account"]})
+            verified_pools.append(parsed_pool)
+
         from backend.app.security import analyse_security
 
-        return analyse_security(
+        report = analyse_security(
             account.get("value"),
             supply.get("value"),
             accounts,
@@ -147,7 +162,48 @@ class SolanaProvider(HttpProvider):
             creator,
             excluded,
             time.time(),
+            mint=mint,
         )
+        report["verified_pools"] = verified_pools
+        if creator:
+            Pubkey.from_string(creator)
+            owned = await self.rpc(
+                "getTokenAccountsByOwner",
+                [creator, {"mint": mint}, {"encoding": "jsonParsed", "commitment": "confirmed"}],
+            )
+            owned_accounts = owned.get("value", [])
+            total = int(supply.get("value", {}).get("amount", 0))
+            if len(owned_accounts) <= 1000 and total > 0:
+                creator_balance = sum(
+                    int(a["account"]["data"]["parsed"]["info"]["tokenAmount"]["amount"])
+                    for a in owned_accounts
+                )
+                report["creator_pct"] = 100 * creator_balance / total
+                report["creator_holdings_quality"] = "DIRECT_OWNER_ACCOUNTS"
+            else:
+                report["creator_pct"] = None
+
+        curve_data = await self.rpc(
+            "getAccountInfo", [str(curve), {"encoding": "base64", "commitment": "confirmed"}]
+        )
+        from backend.app.onchain import parse_curve, parse_global, curve_progress
+
+        try:
+            report["bonding_curve"] = parse_curve(curve_data.get("value"))
+            if self.global_cache is None or time.time() - self.global_cached_at > 300:
+                global_address, _ = Pubkey.find_program_address([b"global"], Pubkey.from_string(PUMP_PROGRAM))
+                global_data = await self.rpc(
+                    "getAccountInfo", [str(global_address), {"encoding": "base64", "commitment": "confirmed"}]
+                )
+                self.global_cache = parse_global(global_data.get("value"))
+                self.global_cached_at = time.time()
+            report["curve_progress"] = curve_progress(report["bonding_curve"], self.global_cache)
+            report["observations"].append(
+                "Curve progress uses current global baseline only if supply/invariant match; completion is not migration"
+            )
+        except ValueError:
+            report["bonding_curve"] = None
+        return report
 
 
 class DexScreenerProvider(HttpProvider):
@@ -210,9 +266,9 @@ class DexScreenerProvider(HttpProvider):
 
 
 class PumpPortalProvider:
-    def __init__(self, settings, submit, candidates):
+    def __init__(self, settings, submit, candidates, require_key=True):
         self.settings, self.submit, self.candidates = settings, submit, candidates
-        self.health = {
+        self.health: dict[str, Any] = {
             "connected": False,
             "last_success": 0,
             "last_event": 0,
@@ -222,7 +278,7 @@ class PumpPortalProvider:
             "estimated_metered_sol": 0,
         }
         self.key = os.getenv("PUMPPORTAL_API_KEY", "")
-        if settings.trade_stream_enabled and not self.key:
+        if require_key and settings.trade_stream_enabled and not self.key:
             raise ValueError("Trade stream explicitly enabled but PUMPPORTAL_API_KEY missing")
         self.subscribed = set()
 
@@ -251,7 +307,7 @@ class PumpPortalProvider:
             wallet=payload.get("traderPublicKey", ""),
             side=payload["txType"] if kind == "trade" else "",
             volume=abs(float(payload.get("solAmount") or 0)),
-            currency="SOL",
+            currency="unknown",
         )
 
     async def run(self):
