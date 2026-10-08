@@ -1,0 +1,11 @@
+# Strategy: conservative post-graduation recovery
+
+Scores explain developing activity; they do not forecast returns. Maturity weights buyer breadth, persistent net buying, flow balance, distributed volume and age evidence. Momentum quality adds volatility and chase penalties. Two-second matching sizes among three or more wallets reduce estimated independence. This is a heuristic, never proof of ownership. Social metadata has no runtime weight.
+
+Near graduation uses RPC curve/global reserve compatibility when available, or explicit simulated progress. Migrations come from PumpPortal evidence, never inferred from market capitalization. A completed curve alone is not a migrated pool. Confirmed tokens wait at least 60 seconds for price discovery, an observed pullback of at least 2%, recovery of at least 1%, and renewed buying.
+
+Default gates: maturity ≥65, momentum ≥70, estimated independent buyers ≥20, largest independent wallet ≤10%, top five ≤30%, liquidity ≥$10,000, chase <60, impact ≤1%, slippage ≤1%. Data freshness 20 seconds; security TTL 300 seconds, higher-priority refresh 60 seconds. On-chain Pool ownership/base mint validation is required in real mode. Creator sells, critical authorities and transfer behaviour reject. Uncertainty waits. Stops are paper exit triggers, not guaranteed loss limits.
+
+Historical evidence is also mandatory. Research-eligible signals meet every structural gate before any future outcome is known. Evidence uses their FIRST signal per mint/session. Missing outcomes cannot be replaced with later successful alerts. Freeze requires ≥100 holdout observations, positive validation/holdout mean intervals and complete coverage. Thresholds never change automatically; configuration hashes create immutable strategy versions. `freeze-evidence` is an explicit research action, not proof of a future edge. Evidence is loaded only at restart and never shared between DEMO and real modes.
+
+Default paper allocation ≤20% of available cash, one position; risk/volatility may reduce size, never force a minimum. Unknown or inadequate edge produces zero allowed size. Normal initial result: NO ECONOMICALLY VIABLE TRADE. Paper exits trigger at -8%, +15%, 300 seconds holding, or risk rejection, then await a later market observation after execution latency.
