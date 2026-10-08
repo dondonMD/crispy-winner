@@ -3,12 +3,13 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, ConfigDict
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     mode: Literal["DEMO", "OBSERVE", "PAPER", "MANUAL ASSIST"] = "OBSERVE"
     account_usd: float = Field(default=20, gt=0)
     max_position_fraction: float = Field(default=0.2, gt=0, le=0.25)

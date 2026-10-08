@@ -14,9 +14,9 @@ max_data_age_seconds: 20
 security_ttl_seconds: 300
 max_top1_pct: 10
 max_top5_pct: 30
-min_buyers: 20
-min_maturity: 65
-min_momentum: 70
+min_buyers: 15
+min_maturity: 60
+min_momentum: 65
 max_chase: 60
 min_liquidity_usd: 10000
 max_impact_pct: 1

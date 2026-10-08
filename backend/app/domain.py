@@ -81,7 +81,7 @@ class PriorityBuffer:
         self.heap: list = []
         self.sequence = 0
         self.dropped = 0
-        self.affected = deque(maxlen=1000)
+        self.affected: deque[str] = deque(maxlen=1000)
 
     def put(self, event, priority):
         self.sequence += 1
@@ -127,6 +127,7 @@ class Token:
     last_event: float = 0
     last_trade: float = 0
     last_price: float = 0
+    last_liquidity: float = 0
     price: float | None = None
     liquidity: float | None = None
     market_cap: float | None = None
