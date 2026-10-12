@@ -26,7 +26,7 @@ TRANSITIONS = {
     State.SCREENING: {State.WATCHING, State.REJECTED, State.GRADUATING},
     State.WATCHING: {State.MATURING, State.GRADUATING, State.REJECTED, State.EXPIRED},
     State.MATURING: {State.NEAR_GRADUATION, State.WATCHING, State.GRADUATING, State.REJECTED, State.EXPIRED},
-    State.NEAR_GRADUATION: {State.GRADUATING, State.COOLING, State.REJECTED, State.EXPIRED},
+    State.NEAR_GRADUATION: {State.MATURING, State.GRADUATING, State.COOLING, State.REJECTED, State.EXPIRED},
     State.GRADUATING: {State.GRADUATED, State.REJECTED},
     State.GRADUATED: {State.POST_GRAD_OBSERVATION, State.REJECTED},
     State.POST_GRAD_OBSERVATION: {State.ENTRY_CANDIDATE, State.COOLING, State.REJECTED, State.EXPIRED},
@@ -133,6 +133,7 @@ class Token:
     market_cap: float | None = None
     graduation: float | None = None
     curve_progress: float | None = None
+    curve_peak_progress: float | None = None
     grad_high: float = 0
     grad_low: float = math.inf
     last_signal: float = 0

@@ -46,3 +46,10 @@ lifecycle_maturing_pct: 30
 lifecycle_near_pct: 85
 security_min_curve_pct: 60
 security_scan_interval_seconds: 30
+
+# Near-graduation hysteresis and cheap fair background sweep (no security scans).
+lifecycle_near_exit_pct: 75
+curve_background_revisit_seconds: 180
+curve_background_batch_seconds: 30
+curve_background_batch_size: 25
+curve_background_backoff_seconds: 60

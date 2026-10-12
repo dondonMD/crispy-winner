@@ -16,9 +16,11 @@
 - A protected history alone can exceed the soft database limit. It is never deleted automatically; new expendable writes stop and maintenance requires user decisions.
 - Windows setup scripts are provided; this build was tested on Linux/WSL, not a Windows desktop. No browser screenshot or visual browser automation was used. The production dashboard build and served assets were checked.
 
-- Free OBSERVE verifies curve progress only for a bounded priority subset, not every launch. At
-  high launch rates new candidates can miss the audition; no claim of exhaustive coverage.
-- Configurable 30%/85% lifecycle stages describe progress, not trade quality or calibrated
+- Free OBSERVE polls the hot set frequently and admitted background candidates through a fair
+  slower sweep. Admission/eviction/expiry and RPC failures still limit coverage; the application
+  does not claim to observe every chain launch or guarantee successful refreshes during outages.
+- Configurable 30%/85% lifecycle stages, with a 75% near-exit hysteresis threshold, describe
+  current progress rather than the highest historical state; they are not trade quality or calibrated
   graduation probabilities. They do not raise maturity/momentum or satisfy entry gates.
 - Current-global compatibility can fail for changed baselines/layouts/supply variants. UNKNOWN
   is expected in those cases. Repeated successful RPC calls do not imply verified security.
@@ -27,3 +29,9 @@
   regression coverage. Public RPC throttling was also observed during the final run.
 - Launch-time reserves are unverified snapshots. The application does not continuously reuse
   them, infer buyer breadth, infer migration from completion, or fabricate pre-grad USD values.
+
+- Session peak progress resets on restart and never supplies lifecycle priority or entry evidence.
+  Stale/unknown curve observations can remove current pre-grad labels without asserting a sell.
+- Background fairness is scheduling fairness under available RPC/resources, not proof that every
+  account parsed successfully. Backoff can extend refresh intervals and candidates can expire.
+  Background attempts are single-request probes and never trigger holder scans or DEX queries.

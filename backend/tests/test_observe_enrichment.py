@@ -58,6 +58,7 @@ async def test_batch_cache_unknown_and_completion(complete):
 async def test_free_observe_funnel_bounded_and_conservative(tmp_path, progress):
     e = RadarEngine(Settings(max_candidates=30, max_deep=5, curve_batch_size=5), tmp_path / "o.db")
     now = time.time()
+    e.last_background_batch = now  # Isolate hot-tier regression within one background interval.
     for i in range(30):
         mint = str(Pubkey.new_unique())
         e.process(MarketEvent(mint=mint, ts=now, source="PumpPortal", kind="create", event_id=str(i)))
@@ -111,6 +112,7 @@ async def test_failed_refresh_and_health(tmp_path):
     assert e.snapshot()["health"]["providers"]["Solana RPC"]["status"] == "CURRENT"
     e.rpc.health["rate_limited_until"] = time.time() + 10
     assert e.snapshot()["health"]["providers"]["Solana RPC"]["status"] == "RATE LIMITED"
+    e.rpc.health["rate_limited_until"] = 0
     mint = str(Pubkey.new_unique())
     now = time.time()
     e.process(MarketEvent(mint=mint, ts=now, source="PumpPortal", kind="create", event_id="new"))

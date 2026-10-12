@@ -63,12 +63,17 @@ Set `RADAR_MODE` before running (`$env:RADAR_MODE='PAPER'` on Windows). `RADAR_C
 
 Detailed verified docs: [providers](docs/providers), [research](docs/research.md). No funded trade-stream key was supplied during development. **Free sources cannot establish independent buyer flow**; the system waits rather than inventing it. Enable metered subscriptions only knowingly using `trade_stream_enabled: true` and private `PUMPPORTAL_API_KEY`. No provider wallet key/seed is stored here.
 
-Free OBSERVE polls derived curve PDAs for the top bounded deep set using `getMultipleAccounts`,
-including a cached global baseline. Verified progress can advance lifecycle states at 30%/85%;
+Free OBSERVE polls derived curve PDAs using `getMultipleAccounts` and a cached global baseline.
+The hot set (default 25) polls about every 30 seconds; remaining active pre-grad candidates
+receive a cheap oldest-first background sweep about every 3–4.5 minutes under healthy RPC.
+Verified progress advances lifecycle states at 30%/85%; near-graduation exits below 75% so
+selling can return a token to MATURING without flapping around 85%. Current and session-peak
+progress are displayed separately; historical peaks do not set current priority.
 **Near graduation describes lifecycle, not investment quality or BUY**. Progress does not raise
 maturity, momentum, or buyer-quality scores. Selective full security scans start at verified 60%
 progress or migration. Missing trade subscriptions show buyer/flow metrics as unavailable and
-explicitly block entries. DEX is queried only for migrated deep candidates.
+explicitly block entries. Background sweeps never run security scans, DEX queries or trade subscriptions.
+DEX is queried only for migrated deep candidates.
 
 HTTP provider health starts **NOT USED YET**, becomes **CURRENT** after successful activity,
 **DEGRADED** after failed requests, and **RATE LIMITED** during Retry-After cooldown.

@@ -52,6 +52,11 @@ class Settings(BaseModel):
     horizons: list[int] = [15, 30, 60, 180, 300, 600, 1800]
     curve_poll_seconds: float = Field(default=30, ge=10)
     curve_batch_size: int = Field(default=25, ge=1, le=50)
+    curve_background_revisit_seconds: float = Field(default=180, ge=60)
+    curve_background_batch_seconds: float = Field(default=30, ge=10)
+    curve_background_batch_size: int = Field(default=25, ge=1, le=50)
+    curve_background_backoff_seconds: float = Field(default=60, ge=30)
+    lifecycle_near_exit_pct: float = Field(default=75, ge=1, le=99)
     lifecycle_maturing_pct: float = Field(default=30, ge=1, le=85)
     lifecycle_near_pct: float = Field(default=85, ge=50, le=100)
     security_min_curve_pct: float = Field(default=60, ge=30, le=100)
@@ -60,7 +65,7 @@ class Settings(BaseModel):
 
     @model_validator(mode="after")
     def consistent(self):
-        if self.lifecycle_maturing_pct >= self.lifecycle_near_pct:
+        if not self.lifecycle_maturing_pct < self.lifecycle_near_exit_pct < self.lifecycle_near_pct:
             raise ValueError("lifecycle thresholds must be ordered")
         if self.max_deep > self.max_candidates:
             raise ValueError("deep set exceeds candidate limit")

@@ -13,7 +13,12 @@ Signal snapshots are immutable and identify mode, session and strategy hash. Out
 Discovery admits bounded candidates without requiring trade events. `deep_mints()` ranks lifecycle
 state, meaningful verified curve progress, then launch recency. Early low-progress tokens yield
 to new auditions; protected paper positions remain prioritised.
-At most one lightweight batch per enrichment iteration samples due members of that deep set.
+At most one hot lightweight batch per enrichment iteration samples due members of that deep set.
+A second, slower tier samples remaining active non-rejected/non-expired pre-grad candidates,
+oldest attempt first (discovery time if never polled). New arrivals cannot jump the waiting line.
+Never-polled background candidates are immediately eligible; previously checked ones wait 180
+seconds. At most 25 background curves are checked per 30-second batch interval. The shared
+strict parsers/global cache and RPC limiter apply to both tiers. No per-event RPC fan-out.
 Curve PDAs are derived locally rather than trusting a launch-supplied address. Global data joins
 the same request when the 300-second cache expires. Strict owner/discriminator/reserve/supply
 parsers and current-global compatibility checks return UNKNOWN on failure. Failed observations
@@ -22,7 +27,11 @@ migration event remains the authoritative lifecycle transition. Pool security re
 verified on-chain after migration.
 
 WATCHING → MATURING can use fresh verified 30% curve progress; MATURING → NEAR_GRADUATION
-uses 85%. These configurable observational thresholds do not alter quality scores or entry gates.
+uses 85%. NEAR_GRADUATION retains its label down to 75%, then legitimately returns to MATURING;
+a later rise to 85% re-enters. Unknown/stale curve evidence also removes the near label, with
+a distinct reason rather than claiming verified selling. MATURING returns to WATCHING if
+meaningful curve/activity evidence is no longer current. These observational transitions do
+not alter quality scores or entry gates. Migration still overrides pre-grad lifecycle.
 Full security/holder/creator scans require migration or fresh verified 60% progress, run within the
 same deep set, and are globally limited to one scan per 30 seconds with per-token security TTL.
 Security attempts and successful report timestamps are separate; failed refreshes become UNKNOWN.
@@ -34,3 +43,17 @@ quality is inferred. HTTP health tracks attempts, requests, successes, errors an
 Unavailable buyer/flow fields and trade-dependent score components are null in dashboard/detail
 APIs and history charts; internal conservative scoring retains observed counts, never asserting a
 verified buyer census. An explicit missing-trade-stream entry gate prevents accidental promotion.
+
+Background work follows hot polling and selective security work, and is paused during resource/
+storage pressure or RPC cooldown. Any new RPC errors delay background work by 60/120/240
+seconds (capped at 300); successful background recovery probes reduce that backoff level.
+Background requests have one HTTP attempt, not a retry burst. Retry-After remains honoured by
+all RPC work, and hot polling resumes before background when permitted. Backoff never enlarges
+batches/concurrency. Full security eligibility remains exclusively within the hot/deep set.
+
+Session peak curve progress is an in-memory historical maximum, separate from current progress;
+it resets on restart. Restored pre-grad lifecycle labels reset to WATCHING until new evidence.
+Curve events include hot/background provenance and remain replayable. Health reports logical
+hot/background batches, actual curve HTTP request starts (including retries), attempted/returned
+curve-account counts, verified observations, background size/due count, oldest attempt age and
+background backoff deadline. These scheduler counters reset each process session and are bounded.

@@ -52,3 +52,57 @@ RPC recorded three throttling errors and a Retry-After cooldown timestamp, then 
 One real token reached 70.76% and MATURING without trade events; no NEAR_GRADUATION or migration
 was witnessed. Zero paid subscriptions and $20 paper cash remained. This supersedes the initial
 window's absence of MATURING; fixture coverage still supplies the near-graduation/migration cases.
+
+## Fair and regression-aware lifecycle monitoring — 2026-10-12
+
+User-reported longer-run checkpoint (not a measurement taken by this change): approximately
+80–85 active real candidates, hot cap 25, two NEAR_GRADUATION tokens, 2,464+ processed events,
+zero drops, queue 0/1000, about 121.7MB RSS, unavailable buyer/flow evidence, zero entries and
+$20 paper balance. Code inspection reproduced a missing NEAR_GRADUATION → MATURING transition
+and curve polling restricted to the hot set.
+
+Implemented near-entry 85% / near-exit 75% hysteresis with separate session peak, conservative
+stale/unknown lifecycle handling, oldest-first bounded background sweeps, single-attempt
+background requests, adaptive error/429 backoff and health/UI counters. Economics, risk and
+trade-evidence gates are unchanged; no wallet or trading capability added.
+
+Validation: 54 backend tests passed, including the full 84/86/82/75/70/90 progression/regression
+sequence with unchanged maturity/momentum and WAIT, completion vs authoritative migration,
+250-candidate repeated fair sweeps at the 25-hot cap, promotion, newer-arrival fairness, unknown/
+stale label removal, 429 backoff/recovery, one-attempt background HTTP behaviour, expiry during
+RPC awaits, pressure pausing and restart re-verification. Four frontend tests, strict TypeScript/production build, Ruff, mypy and the basic secret scan passed.
+Full backend suite ran outside the restricted sandbox. No browser automation was used.
+
+Live verification, default settings (300 seconds): 30 real launches, active/hot/background
+30/25/5, 136 account attempts, 104 returned account observations and 99 verified curve values.
+Sixteen hot logical batches, 22 actual RPC HTTP request starts (0.0733/second), 4.73 returned
+curve accounts per curve HTTP request including retries. RSS 96.1MB (sampled peak also 96.1),
+queue 0 at final snapshot / 21 sampled peak, zero dropped events. RPC recorded eight connection/
+timeout errors, zero HTTP 429s; adaptive background backoff grew, and the five background tokens
+were still recently attempted (oldest 62.1 seconds). Consequently no background batch became
+due within this window. PumpPortal recorded six reconnects; both PumpPortal and RPC ended CURRENT.
+DEX remained NOT USED YET with zero requests. No security scans, entries or paid subscriptions;
+paper cash $20. Observed progress was below the maturing threshold, so no near-regression,
+high-progress promotion or migration case was witnessed. Current/peak differences were observed
+on early curves; the near-regression/promotion cases are deterministic tests, not invented live cases.
+
+An initial 300-second probe was inconclusive: two late launches, one RPC request still pending
+at shutdown, no completed curve observations, eight PumpPortal reconnects and 93MB RSS. A separate
+connectivity probe then timed out on PumpPortal but confirmed RPC/DEX connectivity (zero expected
+probe markets). These failures are recorded rather than reported as successful verification.
+
+Isolated background diagnostic (`--seconds 240 --max-deep 2`; production default remains 25):
+94 real launches, active/hot/background 94/2/92. Seven background batches emitted 59 curve
+observations across 58 background mints, with one repeated background observation. Twenty-nine
+hot batches and seven background batches made 36 actual curve/RPC HTTP requests (0.1500/second),
+94 returned curve account observations / 91 verified progress values, 2.61 accounts per curve
+HTTP request. Three parsed/compatibility results remained unknown rather than inferred. Final
+background due count 16, oldest background attempt age 204.7 seconds. RSS and sampled peak
+96.7MB, final queue 0 / sampled peak 3, zero drops. All provider error/429/reconnect counts zero;
+PumpPortal/RPC CURRENT, DEX NOT USED YET with zero requests. No security scans (and therefore no
+scans outside hot), entries or paid subscriptions; cash $20. Real MATURING progress reached
+57.47%; earlier maturing curves also retreated (53.18% peak to 29.11% current, WATCHING).
+No NEAR_GRADUATION regression or migration was witnessed; near hysteresis, hot promotion and
+fair repeated 250-candidate coverage are verified by deterministic tests. This diagnostic
+exercises background scheduling with a deliberately reduced hot limit; it is separate from the
+30/25/5 default-run measurement, not a claim that application configuration changed.

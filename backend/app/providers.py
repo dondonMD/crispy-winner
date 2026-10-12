@@ -52,10 +52,12 @@ class HttpProvider:
             "errors": 0,
             "reconnects": 0,
             "rate_limited_until": 0,
+            "rate_limits": 0,
         }
 
-    async def request(self, method, url, **kwargs):
-        for attempt in range(3):
+    async def request(self, method, url, retry_attempts=3, **kwargs):
+        retry_attempts = min(3, max(1, retry_attempts))
+        for attempt in range(retry_attempts):
             async with self.limiter.semaphore:
                 cooldown = self.health["rate_limited_until"] - time.time()
                 if cooldown > 0:
@@ -83,6 +85,7 @@ class HttpProvider:
                                     )
                                 except (KeyError, ValueError, TypeError):
                                     delay = 2
+                            self.health["rate_limits"] += 1
                             self.health["rate_limited_until"] = time.time() + delay
                             self.health["errors"] += 1
                         else:
@@ -105,7 +108,7 @@ class HttpProvider:
                     log.warning("%s request failed: %s", self.name, type(exc).__name__)
                     delay = 2**attempt + random.random()
             self.health["connected"] = False
-            if attempt < 2:
+            if attempt < retry_attempts - 1:
                 await asyncio.sleep(delay)
         raise RuntimeError(f"{self.name} unavailable after bounded retries")
 
@@ -120,9 +123,12 @@ class SolanaProvider(HttpProvider):
         self.global_cache = None
         self.global_cached_at = 0.0
 
-    async def rpc(self, method, params):
+    async def rpc(self, method, params, retry_attempts=3):
         data = await self.request(
-            "POST", self.url, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+            "POST",
+            self.url,
+            json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
+            retry_attempts=retry_attempts,
         )
         if "error" in data or "result" not in data:
             self.health["connected"] = False
@@ -130,7 +136,7 @@ class SolanaProvider(HttpProvider):
             raise ValueError("RPC returned an error or missing result")
         return data["result"]
 
-    async def curve_progress_batch(self, mints, batch_size=25):
+    async def curve_progress_batch(self, mints, batch_size=25, retry_attempts=3):
         """One bounded batch; no mint, holder or creator scans. PDAs are derived locally."""
         from backend.app.onchain import parse_curve, parse_global, curve_progress
 
@@ -146,7 +152,9 @@ class SolanaProvider(HttpProvider):
         if refresh:
             addresses.append(str(Pubkey.find_program_address([b"global"], program)[0]))
         result = await self.rpc(
-            "getMultipleAccounts", [addresses, {"encoding": "base64", "commitment": "confirmed"}]
+            "getMultipleAccounts",
+            [addresses, {"encoding": "base64", "commitment": "confirmed"}],
+            retry_attempts=retry_attempts,
         )
         values = result.get("value")
         if not isinstance(values, list) or len(values) != len(addresses):

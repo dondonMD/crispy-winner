@@ -5,3 +5,5 @@ export const age=(seconds:number)=>seconds<60?`${Math.floor(seconds)}s`:`${Math.
 export function filterTokens<T extends {name:string;symbol:string;mint:string;state:string}>(tokens:T[],query:string,stage:string){return tokens.filter(t=>(stage==='ALL'||t.state===stage)&&`${t.name} ${t.symbol} ${t.mint}`.toLowerCase().includes(query.toLowerCase()));}
 
 export function providerStatus(p:{status?:string;connected:boolean;attempted?:boolean;rate_limited_until?:number}, now=Date.now()/1000){return (p.rate_limited_until||0)>now?'RATE LIMITED':p.status||(p.connected?'CURRENT':p.attempted?'DEGRADED':'NOT USED YET');}
+
+export function curveLabel(progress:number|null|undefined,quality?:string){return progress==null?'Unknown':`${pct(progress)} ${quality==='CURRENT'?'current':'last observed'}${quality==='STALE'?' · stale':''}`;}

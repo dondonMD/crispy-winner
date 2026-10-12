@@ -67,6 +67,18 @@ class RadarEngine:
             ):
                 self.approved_evidence = row["holdout"]
                 break
+        self.curve_metrics = {
+            "curve_hot_poll_requests": 0,
+            "curve_background_poll_requests": 0,
+            "curve_accounts_attempted": 0,
+            "curve_accounts_checked": 0,
+            "curve_observations_verified": 0,
+            "curve_http_requests": 0,
+        }
+        self.last_background_batch = 0.0
+        self.background_backoff_until = 0.0
+        self.background_backoff_level = 0
+        self.rpc_errors_seen = 0
         self.last_security_scan = 0.0
         self.last_lab = 0.0
         self.last_maintenance = 0.0
@@ -115,6 +127,8 @@ class RadarEngine:
                 row.get("creator", ""),
             )
             token.state = State(row["state"])
+            if token.state in [State.MATURING, State.NEAR_GRADUATION]:
+                token.state = State.WATCHING  # Restored lifecycle requires new verified evidence.
             token.graduation = row.get("graduation")
             token.grad_high = row.get("grad_high", 0)
             token.grad_low = row.get("grad_low") or math.inf
@@ -141,6 +155,7 @@ class RadarEngine:
         )
         protected = list(self.paper.state["positions"])
         protected += [m for m, p in self.paper.state["pending"].items() if p.get("action") == "entry"]
+        protected = [m for m in protected if m in self.tokens]
         ranked = protected + [t.mint for t in eligible if t.mint not in protected]
         return ranked[: max(1, limit)]
 
@@ -256,6 +271,8 @@ class RadarEngine:
                 token.curve_progress = event.evidence["curve_progress"]
             if not self.metrics.get("storage_full"):
                 self.db.add("security", event.evidence, event.mint, self.session, event.ts)
+        if event.kind == "security" and event.evidence.get("curve_progress") is not None:
+            token.last_curve = event.ts
         if event.kind == "trade":
             if event.source == "PumpPortal" and event.currency == "unknown":
                 curve = token.security.get("bonding_curve") or {}
@@ -286,6 +303,8 @@ class RadarEngine:
             token.market_cap = event.market_cap
         if event.curve_progress is not None:
             token.curve_progress = event.curve_progress
+        if token.curve_progress is not None:
+            token.curve_peak_progress = max(token.curve_peak_progress or 0, token.curve_progress)
         if (
             event.kind == "migration"
             and token.graduation is None
@@ -395,11 +414,38 @@ class RadarEngine:
         token.decision["historical_evidence"] = evidence or holdout or {"count": 0, "status": "UNVALIDATED"}
         if token.decision["decision"] == "REJECT" and token.state not in [State.REJECTED, State.EXPIRED]:
             self.transition(token, State.REJECTED, "; ".join(token.decision["reasons"][:3]), now)
+        elif (
+            token.state == State.NEAR_GRADUATION
+            and token.graduation is None
+            and (
+                not self.curve_current(token, now)
+                or token.curve_progress < self.settings.lifecycle_near_exit_pct
+            )
+        ):
+            self.transition(
+                token,
+                State.MATURING,
+                "Curve evidence unavailable/stale"
+                if not self.curve_current(token, now)
+                else "Verified curve retreat below near-graduation exit threshold; lifecycle only",
+                now,
+            )
+        elif (
+            token.state == State.MATURING
+            and token.graduation is None
+            and (
+                token.scores["maturity"] < self.settings.min_maturity
+                and (
+                    not self.curve_current(token, now)
+                    or token.curve_progress < self.settings.lifecycle_maturing_pct
+                )
+            )
+        ):
+            self.transition(token, State.WATCHING, "Meaningful lifecycle evidence no longer current", now)
         elif token.state == State.WATCHING and (
             token.scores["maturity"] >= self.settings.min_maturity
             or (
-                token.curve_progress is not None
-                and 0 <= now - token.last_curve <= self.settings.curve_poll_seconds * 2
+                self.curve_current(token, now)
                 and token.curve_progress >= self.settings.lifecycle_maturing_pct
             )
         ):
@@ -411,11 +457,7 @@ class RadarEngine:
             )
         elif (
             token.state == State.MATURING
-            and token.curve_progress is not None
-            and (
-                self.settings.mode == "DEMO"
-                or 0 <= now - token.last_curve <= self.settings.curve_poll_seconds * 2
-            )
+            and self.curve_current(token, now)
             and token.curve_progress >= self.settings.lifecycle_near_pct
         ):
             self.transition(
@@ -464,6 +506,71 @@ class RadarEngine:
             tick += 1
             await asyncio.sleep(1)
 
+    def curve_current(self, token, now):
+        return token.curve_progress is not None and (
+            self.settings.mode == "DEMO"
+            or 0 <= now - token.last_curve <= self.settings.curve_poll_seconds * 2
+        )
+
+    def background_tokens(self, deep):
+        hot = set(deep)
+        return [
+            t
+            for t in self.tokens.values()
+            if t.mint not in hot and t.graduation is None and t.state not in [State.REJECTED, State.EXPIRED]
+        ]
+
+    def background_health_backoff(self, now):
+        errors = self.rpc.health["errors"]
+        if errors > self.rpc_errors_seen:
+            self.background_backoff_level = min(3, self.background_backoff_level + 1)
+            delay = min(
+                300, self.settings.curve_background_backoff_seconds * 2 ** (self.background_backoff_level - 1)
+            )
+            self.background_backoff_until = max(
+                self.background_backoff_until, now + delay, self.rpc.health["rate_limited_until"]
+            )
+        self.rpc_errors_seen = errors
+
+    async def poll_curves(self, selected, tier, batch_size):
+        now = time.time()
+        for token in selected:
+            token.last_curve_attempt = now
+        self.curve_metrics[f"curve_{tier}_poll_requests"] += 1
+        self.curve_metrics["curve_accounts_attempted"] += len(selected)
+        requests_before = self.rpc.health["requests"]
+        try:
+            if tier == "background":
+                reports = await self.rpc.curve_progress_batch(
+                    [t.mint for t in selected], batch_size, retry_attempts=1
+                )
+            else:
+                reports = await self.rpc.curve_progress_batch([t.mint for t in selected], batch_size)
+            self.curve_metrics["curve_accounts_checked"] += len(reports)
+            self.curve_metrics["curve_observations_verified"] += sum(
+                r.get("curve_progress") is not None for r in reports.values()
+            )
+        except (RuntimeError, ValueError, KeyError, TypeError):
+            reports = {t.mint: {"curve_progress": None, "data_quality": "UNKNOWN"} for t in selected}
+            # Includes malformed responses even if the HTTP connection succeeded.
+            self.background_backoff_until = max(
+                self.background_backoff_until, time.time() + self.settings.curve_background_backoff_seconds
+            )
+        finally:
+            self.curve_metrics["curve_http_requests"] += self.rpc.health["requests"] - requests_before
+        for mint, report in reports.items():
+            self.submit(
+                MarketEvent(
+                    mint=mint,
+                    ts=time.time(),
+                    source="Solana RPC",
+                    kind="curve",
+                    event_id=f"curve:{mint}:{now}",
+                    evidence={**report, "poll_tier": tier},
+                )
+            )
+        self.background_health_backoff(time.time())
+
     async def enrich_once(self):
         now = time.time()
         deep = self.deep_mints()
@@ -475,32 +582,17 @@ class RadarEngine:
         ]
         due_curves.sort(key=lambda t: (t.last_curve_attempt, -t.priority()[0]))
         selected = due_curves[: self.settings.curve_batch_size]
-        for token in selected:
-            token.last_curve_attempt = now
-        if selected:
-            try:
-                reports = await self.rpc.curve_progress_batch(
-                    [t.mint for t in selected], self.settings.curve_batch_size
-                )
-            except (RuntimeError, ValueError, KeyError, TypeError):
-                reports = {t.mint: {"curve_progress": None, "data_quality": "UNKNOWN"} for t in selected}
-            for mint, report in reports.items():
-                self.submit(
-                    MarketEvent(
-                        mint=mint,
-                        ts=time.time(),
-                        source="Solana RPC",
-                        kind="curve",
-                        event_id=f"curve:{mint}:{now}",
-                        evidence=report,
-                    )
-                )
+        # Cooldowns do not block the loop waiting on low-priority work.
+        if selected and self.rpc.health["rate_limited_until"] <= now:
+            await self.poll_curves(selected, "hot", self.settings.curve_batch_size)
+        deep = self.deep_mints()  # Membership may change while RPC was awaiting a response.
         graduated = [mint for mint in deep if self.tokens[mint].graduation is not None]
         try:
             for event in await self.dex.markets(graduated):
                 self.submit(event)
         except (RuntimeError, ValueError, KeyError, TypeError):
             self.alert("SYSTEM", "", "Post-graduation market enrichment unavailable", time.time())
+        deep = self.deep_mints()  # Expiry/eviction can also happen during DEX awaits.
         # One full scan per global interval, only within the bounded deep set.
         due = [
             self.tokens[m]
@@ -515,7 +607,11 @@ class RadarEngine:
             )
             and now - self.tokens[m].last_security_attempt >= self.settings.security_ttl_seconds
         ]
-        if due and now - self.last_security_scan >= self.settings.security_scan_interval_seconds:
+        if (
+            due
+            and now - self.last_security_scan >= self.settings.security_scan_interval_seconds
+            and self.rpc.health["rate_limited_until"] <= time.time()
+        ):
             token = max(due, key=lambda t: t.priority())
             token.last_security_attempt = self.last_security_scan = now
             known = {
@@ -543,6 +639,35 @@ class RadarEngine:
                     evidence=report,
                 )
             )
+
+        now = time.time()
+        self.background_health_backoff(now)
+        # Strictly cheap, oldest-first sweep after hot and selective security work.
+        # New arrivals cannot jump ahead of tokens awaiting their first/repeated poll.
+        background = self.background_tokens(self.deep_mints())
+        waiting = [
+            t
+            for t in background
+            if not t.last_curve_attempt
+            or now - t.last_curve_attempt >= self.settings.curve_background_revisit_seconds
+        ]
+        waiting.sort(key=lambda t: (t.last_curve_attempt or t.created, t.created, t.mint))
+        if (
+            waiting
+            and not self.metrics.get("resource_pressure")
+            and not self.metrics.get("storage_full")
+            and now >= max(self.background_backoff_until, self.rpc.health["rate_limited_until"])
+            and now - self.last_background_batch >= self.settings.curve_background_batch_seconds
+        ):
+            self.last_background_batch = now
+            errors_before = self.rpc.health["errors"]
+            await self.poll_curves(
+                waiting[: self.settings.curve_background_batch_size],
+                "background",
+                self.settings.curve_background_batch_size,
+            )
+            if self.rpc.health["errors"] == errors_before and time.time() >= self.background_backoff_until:
+                self.background_backoff_level = max(0, self.background_backoff_level - 1)
 
     async def run_enrichment(self):
         while True:
@@ -658,11 +783,11 @@ class RadarEngine:
             "launch_metadata": token.launch_metadata,
             "trade_evidence": "UNAVAILABLE" if not self.trade_evidence_available() else "OBSERVED_ONLY",
             "curve_observed_at": token.last_curve or None,
+            "curve_peak_progress": token.curve_peak_progress,
             "curve_data_quality": "UNKNOWN"
             if token.curve_progress is None
             else "CURRENT"
-            if self.settings.mode == "DEMO"
-            or 0 <= now - token.last_curve <= self.settings.curve_poll_seconds * 2
+            if self.curve_current(token, now)
             else "STALE",
             "security": token.security,
             "decision": token.decision,
@@ -724,6 +849,8 @@ class RadarEngine:
     def snapshot(self):
         now = time.time()
         tokens = sorted(self.tokens.values(), key=lambda t: t.priority(), reverse=True)
+        background = self.background_tokens(self.deep_mints())
+        ages = [max(0, now - (t.last_curve_attempt or t.created)) for t in background]
         return {
             "name": "CRISPY WINNER — Graduation Radar",
             "mode": self.settings.mode,
@@ -740,6 +867,15 @@ class RadarEngine:
                 "active_candidates": len(tokens),
                 "deep_monitored": len(self.deep_mints()),
                 "deep_subscriptions": len(self.pump.subscribed),
+                **self.curve_metrics,
+                "background_candidates": len(background),
+                "background_candidates_waiting": sum(
+                    not t.last_curve_attempt
+                    or now - t.last_curve_attempt >= self.settings.curve_background_revisit_seconds
+                    for t in background
+                ),
+                "oldest_background_poll_age": round(max(ages, default=0), 1),
+                "background_backoff_until": self.background_backoff_until,
                 "queue_size": len(self.queue.heap),
                 "queue_limit": self.queue.maximum,
                 "dropped_events": self.queue.dropped,
