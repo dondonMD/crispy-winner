@@ -144,6 +144,8 @@ class PositionSizer:
 def evaluate_candidate(token, settings, now, healthy=True, resource_pressure=False, evidence=None):
     hard = []
     waits = []
+    if settings.mode != "DEMO" and not settings.trade_stream_enabled:
+        waits.append("Trade stream unavailable: buyer breadth and flow evidence required")
     security = token.security
     features = token.features.get("180", {})
     if security.get("hard_failures"):

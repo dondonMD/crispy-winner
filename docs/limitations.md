@@ -1,7 +1,7 @@
 # Known limitations
 
 - No profitability claim, wallet, autonomous live trading, private key, manipulation, front-running or private order flow.
-- Free discovery/migrations work without a key in the verified probe. Wallet-level trade streams are now metered by PumpPortal and explicitly opt-in; no free substitute for buyer breadth is invented. Without them real entries normally stay WAIT.
+- Free discovery/migrations work without a key in the verified probe. Wallet-level trade streams are now metered by PumpPortal and explicitly opt-in; no free substitute for buyer breadth is invented. Without them buyer/flow fields are unavailable and real entries are explicitly blocked.
 - The default RPC is public and may throttle. DEX data is indexed, not tick-accurate. Receive timestamps do not establish on-chain event age or guarantee low latency. Market gaps make outcomes unavailable.
 - The probe verified 19 launch events, RPC supply and DEX connectivity; it did not claim a live graduation was witnessed or validate the funded trade stream. Those paths have deterministic fixtures/tests. No funded account was supplied.
 - Creator identity is provider-reported, not cryptographically linked ownership. Current creator fee recipients can change. Recent creator history is bounded to observed launches, not exhaustive.
@@ -15,3 +15,15 @@
 - One compact indexed record journal replaces dozens of nearly identical v1 tables. Alembic evolves it; event identities have a separate indexed table. This keeps migrations/querying small but does not provide full relational foreign-key analytics.
 - A protected history alone can exceed the soft database limit. It is never deleted automatically; new expendable writes stop and maintenance requires user decisions.
 - Windows setup scripts are provided; this build was tested on Linux/WSL, not a Windows desktop. No browser screenshot or visual browser automation was used. The production dashboard build and served assets were checked.
+
+- Free OBSERVE verifies curve progress only for a bounded priority subset, not every launch. At
+  high launch rates new candidates can miss the audition; no claim of exhaustive coverage.
+- Configurable 30%/85% lifecycle stages describe progress, not trade quality or calibrated
+  graduation probabilities. They do not raise maturity/momentum or satisfy entry gates.
+- Current-global compatibility can fail for changed baselines/layouts/supply variants. UNKNOWN
+  is expected in those cases. Repeated successful RPC calls do not imply verified security.
+- A short live sample may show only early progress; the initial 2026-10-12 run observed no later lifecycle stage. The final repeat observed
+  MATURING at 70.76%, but no NEAR_GRADUATION or migration. Those transitions have deterministic
+  regression coverage. Public RPC throttling was also observed during the final run.
+- Launch-time reserves are unverified snapshots. The application does not continuously reuse
+  them, infer buyer breadth, infer migration from completion, or fabricate pre-grad USD values.

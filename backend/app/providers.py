@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import math
 import os
 import random
 import time
@@ -41,6 +42,9 @@ class HttpProvider:
         self.client = client or httpx.AsyncClient(timeout=12, follow_redirects=False)
         self.limiter = AsyncRateLimiter(rate)
         self.health: dict[str, Any] = {
+            "attempted": False,
+            "last_attempt": 0,
+            "requests": 0,
             "connected": False,
             "last_success": 0,
             "last_event": 0,
@@ -53,7 +57,12 @@ class HttpProvider:
     async def request(self, method, url, **kwargs):
         for attempt in range(3):
             async with self.limiter.semaphore:
+                cooldown = self.health["rate_limited_until"] - time.time()
+                if cooldown > 0:
+                    await asyncio.sleep(cooldown)
                 await self.limiter.wait()
+                self.health.update(attempted=True, last_attempt=time.time())
+                self.health["requests"] += 1
                 started = time.monotonic()
                 try:
                     async with self.client.stream(method, url, **kwargs) as response:
@@ -117,8 +126,53 @@ class SolanaProvider(HttpProvider):
         )
         if "error" in data or "result" not in data:
             self.health["connected"] = False
+            self.health["errors"] += 1
             raise ValueError("RPC returned an error or missing result")
         return data["result"]
+
+    async def curve_progress_batch(self, mints, batch_size=25):
+        """One bounded batch; no mint, holder or creator scans. PDAs are derived locally."""
+        from backend.app.onchain import parse_curve, parse_global, curve_progress
+
+        mints = list(dict.fromkeys(mints))[: min(50, max(1, batch_size))]
+        if not mints:
+            return {}
+        program = Pubkey.from_string(PUMP_PROGRAM)
+        addresses = [
+            str(Pubkey.find_program_address([b"bonding-curve", bytes(Pubkey.from_string(m))], program)[0])
+            for m in mints
+        ]
+        refresh = self.global_cache is None or time.time() - self.global_cached_at >= 300
+        if refresh:
+            addresses.append(str(Pubkey.find_program_address([b"global"], program)[0]))
+        result = await self.rpc(
+            "getMultipleAccounts", [addresses, {"encoding": "base64", "commitment": "confirmed"}]
+        )
+        values = result.get("value")
+        if not isinstance(values, list) or len(values) != len(addresses):
+            raise ValueError("Incomplete curve batch")
+        if refresh:
+            self.global_cache = None  # Never retain an incompatible/stale baseline after failure.
+            try:
+                self.global_cache = parse_global(values[-1])
+                self.global_cached_at = time.time()
+            except (ValueError, TypeError, KeyError):
+                pass
+        reports = {}
+        for mint, account in zip(mints, values):
+            report = {"curve_progress": None, "data_quality": "UNKNOWN"}
+            try:
+                curve = parse_curve(account)
+                progress = curve_progress(curve, self.global_cache) if self.global_cache else None
+                report.update(
+                    bonding_curve=curve,
+                    curve_progress=progress,
+                    data_quality="VERIFIED" if progress is not None else "UNKNOWN",
+                )
+            except (ValueError, TypeError, KeyError):
+                pass
+            reports[mint] = report
+        return reports
 
     async def inspect(self, mint, creator="", known_accounts=None):
         Pubkey.from_string(mint)  # reject malformed addresses before network requests
@@ -269,6 +323,9 @@ class PumpPortalProvider:
     def __init__(self, settings, submit, candidates, require_key=True):
         self.settings, self.submit, self.candidates = settings, submit, candidates
         self.health: dict[str, Any] = {
+            "attempted": False,
+            "last_attempt": 0,
+            "requests": 0,
             "connected": False,
             "last_success": 0,
             "last_event": 0,
@@ -308,12 +365,36 @@ class PumpPortalProvider:
             side=payload["txType"] if kind == "trade" else "",
             volume=abs(float(payload.get("solAmount") or 0)),
             currency="unknown",
+            evidence={
+                "launch_metadata": {
+                    key: payload[key]
+                    for key in [
+                        "bondingCurveKey",
+                        "initialBuy",
+                        "marketCapSol",
+                        "vSolInBondingCurve",
+                        "vTokensInBondingCurve",
+                    ]
+                    if key in payload
+                    and (
+                        (isinstance(payload[key], str) and len(payload[key]) <= 64)
+                        or (
+                            type(payload[key]) in (int, float)
+                            and math.isfinite(payload[key])
+                            and payload[key] >= 0
+                        )
+                    )
+                }
+            }
+            if kind == "create"
+            else {},
         )
 
     async def run(self):
         attempt = 0
         while True:
             try:
+                self.health.update(attempted=True, last_attempt=time.time())
                 uri = "wss://pumpportal.fun/api/data"
                 if self.key:
                     uri += "?" + urlencode({"api-key": self.key})

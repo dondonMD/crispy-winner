@@ -37,7 +37,7 @@ def candidate(now=1000):
         }
     }
     t.scores = {"maturity": 80, "momentum": 85, "chase": 10}
-    s = Settings(mode="PAPER")
+    s = Settings(trade_stream_enabled=True, mode="PAPER")
     estimator = TradeCostEstimator(s)
     t.viability = PositionSizer(s, estimator).size(20, t.liquidity, 5, 1)
     return t
@@ -48,7 +48,7 @@ def evidence():
 
 
 def test_costs_break_even_and_small_account():
-    s = Settings()
+    s = Settings(trade_stream_enabled=True)
     c = TradeCostEstimator(s)
     assert c.estimate(4, None) is None
     cost = c.estimate(4, 25000, 0)
@@ -74,25 +74,40 @@ def test_costs_break_even_and_small_account():
 )
 def test_gate(mutation, expected):
     t = candidate()
-    assert evaluate_candidate(t, Settings(), 1000, evidence=evidence())["decision"] == "ALLOW_PAPER_ENTRY"
+    assert (
+        evaluate_candidate(t, Settings(trade_stream_enabled=True), 1000, evidence=evidence())["decision"]
+        == "ALLOW_PAPER_ENTRY"
+    )
     mutation(t)
-    assert evaluate_candidate(t, Settings(), 1000, evidence=evidence())["decision"] == expected
+    assert (
+        evaluate_candidate(t, Settings(trade_stream_enabled=True), 1000, evidence=evidence())["decision"]
+        == expected
+    )
 
 
 def test_provider_and_resource_gate():
     t = candidate()
-    assert evaluate_candidate(t, Settings(), 1000, healthy=False, evidence=evidence())["decision"] == "WAIT"
     assert (
-        evaluate_candidate(t, Settings(), 1000, resource_pressure=True, evidence=evidence())["decision"]
+        evaluate_candidate(t, Settings(trade_stream_enabled=True), 1000, healthy=False, evidence=evidence())[
+            "decision"
+        ]
         == "WAIT"
     )
-    assert evaluate_candidate(t, Settings(), 1000, evidence=None)["decision"] == "WAIT"
+    assert (
+        evaluate_candidate(
+            t, Settings(trade_stream_enabled=True), 1000, resource_pressure=True, evidence=evidence()
+        )["decision"]
+        == "WAIT"
+    )
+    assert (
+        evaluate_candidate(t, Settings(trade_stream_enabled=True), 1000, evidence=None)["decision"] == "WAIT"
+    )
 
 
 def test_delayed_fills_net_and_restart(tmp_path):
     db = Database(tmp_path / "paper.db")
     Base.metadata.create_all(db.engine)
-    s = Settings(mode="PAPER", latency_ms=500)
+    s = Settings(trade_stream_enabled=True, mode="PAPER", latency_ms=500)
     paper = PaperAccount(db, s, TradeCostEstimator(s))
     t = candidate()
     t.decision = evaluate_candidate(t, s, 1000, evidence=evidence())
@@ -120,7 +135,7 @@ def test_delayed_fills_net_and_restart(tmp_path):
 def test_rejected_and_recheck_cannot_fill(tmp_path):
     db = Database(tmp_path / "paper.db")
     Base.metadata.create_all(db.engine)
-    s = Settings(mode="PAPER")
+    s = Settings(trade_stream_enabled=True, mode="PAPER")
     paper = PaperAccount(db, s, TradeCostEstimator(s))
     t = candidate()
     t.decision = {"decision": "REJECT"}
@@ -136,7 +151,7 @@ def test_rejected_and_recheck_cannot_fill(tmp_path):
 def test_atomic_account_memory_rollback(tmp_path, monkeypatch):
     db = Database(tmp_path / "atomic.db")
     Base.metadata.create_all(db.engine)
-    settings = Settings(mode="PAPER")
+    settings = Settings(trade_stream_enabled=True, mode="PAPER")
     paper = PaperAccount(db, settings, TradeCostEstimator(settings))
     t = candidate()
     t.decision = evaluate_candidate(t, settings, 1000, evidence=evidence())

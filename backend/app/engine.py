@@ -67,6 +67,7 @@ class RadarEngine:
             ):
                 self.approved_evidence = row["holdout"]
                 break
+        self.last_security_scan = 0.0
         self.last_lab = 0.0
         self.last_maintenance = 0.0
         self.restore()
@@ -125,7 +126,15 @@ class RadarEngine:
         # New launches get a temporary activity audition. No holder scans for all discovery.
         eligible = [t for t in self.tokens.values() if t.state not in [State.REJECTED, State.EXPIRED]]
         eligible.sort(
-            key=lambda t: (t.priority()[0], t.scores.get("maturity", 0), t.created, t.mint), reverse=True
+            key=lambda t: (
+                t.priority()[0],
+                t.curve_progress
+                if t.curve_progress is not None and t.curve_progress >= self.settings.lifecycle_maturing_pct
+                else -1,
+                t.created,
+                t.mint,
+            ),
+            reverse=True,
         )
         limit = (
             self.settings.max_deep // 2 if self.metrics.get("resource_pressure") else self.settings.max_deep
@@ -180,7 +189,7 @@ class RadarEngine:
             if not unprotected:
                 return None
             weakest = min(unprotected, key=lambda t: (t.priority(), t.created))
-            incoming = 110 if event.kind == "migration" else 5
+            incoming = 110 if event.kind == "migration" else 30
             if weakest.priority()[0] > incoming:
                 return None
             if State.EXPIRED in TRANSITIONS[weakest.state]:
@@ -235,6 +244,11 @@ class RadarEngine:
             if len(self.creators) > 250:
                 self.creators.popitem(last=False)
 
+        if event.kind == "create":
+            token.launch_metadata = event.evidence.get("launch_metadata", {})
+        if event.kind == "curve":
+            token.curve_progress = event.evidence.get("curve_progress")
+            token.last_curve = event.ts
         if event.kind == "security":
             token.security = event.evidence
             token.last_security = event.ts
@@ -334,8 +348,12 @@ class RadarEngine:
                     "market_cap": token.market_cap,
                     "maturity": token.scores["maturity"],
                     "momentum": token.scores["momentum"],
-                    "buyers": token.features["180"]["estimated_independent_buyers"],
-                    "net_flow": token.features["180"]["net_flow"],
+                    "buyers": token.features["180"]["estimated_independent_buyers"]
+                    if self.trade_evidence_available()
+                    else None,
+                    "net_flow": token.features["180"]["net_flow"]
+                    if self.trade_evidence_available()
+                    else None,
                 }
             )
         self.processed += 1
@@ -362,7 +380,9 @@ class RadarEngine:
             )
             token.viability_key = key
         healthy = self.settings.mode == "DEMO" or (
-            self.pump.health["connected"] and self.rpc.health["connected"] and self.dex.health["connected"]
+            self.pump.health["connected"]
+            and self.rpc.health["connected"]
+            and (token.graduation is None or self.dex.health["connected"])
         )
         token.decision = evaluate_candidate(
             token,
@@ -375,12 +395,35 @@ class RadarEngine:
         token.decision["historical_evidence"] = evidence or holdout or {"count": 0, "status": "UNVALIDATED"}
         if token.decision["decision"] == "REJECT" and token.state not in [State.REJECTED, State.EXPIRED]:
             self.transition(token, State.REJECTED, "; ".join(token.decision["reasons"][:3]), now)
-        elif token.state == State.WATCHING and token.scores["maturity"] >= self.settings.min_maturity:
-            self.transition(token, State.MATURING, "Persistent distributed activity", now)
-        elif (
-            token.state == State.MATURING and token.curve_progress is not None and token.curve_progress >= 85
+        elif token.state == State.WATCHING and (
+            token.scores["maturity"] >= self.settings.min_maturity
+            or (
+                token.curve_progress is not None
+                and 0 <= now - token.last_curve <= self.settings.curve_poll_seconds * 2
+                and token.curve_progress >= self.settings.lifecycle_maturing_pct
+            )
         ):
-            self.transition(token, State.NEAR_GRADUATION, "Observed curve progress ≥85%", now)
+            self.transition(
+                token,
+                State.MATURING,
+                "Observed lifecycle progress or persistent distributed activity; not investment quality",
+                now,
+            )
+        elif (
+            token.state == State.MATURING
+            and token.curve_progress is not None
+            and (
+                self.settings.mode == "DEMO"
+                or 0 <= now - token.last_curve <= self.settings.curve_poll_seconds * 2
+            )
+            and token.curve_progress >= self.settings.lifecycle_near_pct
+        ):
+            self.transition(
+                token,
+                State.NEAR_GRADUATION,
+                "Observed high curve progress; lifecycle only, not a buy recommendation",
+                now,
+            )
         elif token.decision["decision"] == "ALLOW_PAPER_ENTRY" and token.state == State.POST_GRAD_OBSERVATION:
             self.transition(token, State.ENTRY_CANDIDATE, "Strict risk and economics gates passed", now)
         elif token.state == State.ENTRY_CANDIDATE and token.decision["decision"] != "ALLOW_PAPER_ENTRY":
@@ -421,48 +464,89 @@ class RadarEngine:
             tick += 1
             await asyncio.sleep(1)
 
+    async def enrich_once(self):
+        now = time.time()
+        deep = self.deep_mints()
+        due_curves = [
+            self.tokens[m]
+            for m in deep
+            if self.tokens[m].graduation is None
+            and now - self.tokens[m].last_curve_attempt >= self.settings.curve_poll_seconds
+        ]
+        due_curves.sort(key=lambda t: (t.last_curve_attempt, -t.priority()[0]))
+        selected = due_curves[: self.settings.curve_batch_size]
+        for token in selected:
+            token.last_curve_attempt = now
+        if selected:
+            try:
+                reports = await self.rpc.curve_progress_batch(
+                    [t.mint for t in selected], self.settings.curve_batch_size
+                )
+            except (RuntimeError, ValueError, KeyError, TypeError):
+                reports = {t.mint: {"curve_progress": None, "data_quality": "UNKNOWN"} for t in selected}
+            for mint, report in reports.items():
+                self.submit(
+                    MarketEvent(
+                        mint=mint,
+                        ts=time.time(),
+                        source="Solana RPC",
+                        kind="curve",
+                        event_id=f"curve:{mint}:{now}",
+                        evidence=report,
+                    )
+                )
+        graduated = [mint for mint in deep if self.tokens[mint].graduation is not None]
+        try:
+            for event in await self.dex.markets(graduated):
+                self.submit(event)
+        except (RuntimeError, ValueError, KeyError, TypeError):
+            self.alert("SYSTEM", "", "Post-graduation market enrichment unavailable", time.time())
+        # One full scan per global interval, only within the bounded deep set.
+        due = [
+            self.tokens[m]
+            for m in deep
+            if (
+                self.tokens[m].graduation is not None
+                or (
+                    self.tokens[m].curve_progress is not None
+                    and 0 <= now - self.tokens[m].last_curve <= self.settings.curve_poll_seconds * 2
+                    and self.tokens[m].curve_progress >= self.settings.security_min_curve_pct
+                )
+            )
+            and now - self.tokens[m].last_security_attempt >= self.settings.security_ttl_seconds
+        ]
+        if due and now - self.last_security_scan >= self.settings.security_scan_interval_seconds:
+            token = max(due, key=lambda t: t.priority())
+            token.last_security_attempt = self.last_security_scan = now
+            known = {
+                p["pairAddress"]
+                for _, p in self.dex.cache.values()
+                if p and p["baseToken"]["address"] == token.mint
+            }
+            try:
+                report = await self.rpc.inspect(token.mint, token.creator, known)
+            except (RuntimeError, ValueError, KeyError, TypeError):
+                report = {
+                    "data_quality": "UNKNOWN",
+                    "risk_score": 100,
+                    "hard_failures": [],
+                    "warnings": ["Security refresh failed"],
+                    "last_updated": time.time(),
+                }
+            self.submit(
+                MarketEvent(
+                    mint=token.mint,
+                    ts=time.time(),
+                    source="Solana RPC",
+                    kind="security",
+                    event_id=f"sec:{token.mint}:{now}",
+                    evidence=report,
+                )
+            )
+
     async def run_enrichment(self):
         while True:
-            try:
-                now = time.time()
-                deep = self.deep_mints()
-                graduated = [mint for mint in deep if self.tokens[mint].graduation]
-                for event in await self.dex.markets(graduated):
-                    self.submit(event)
-                # At most one full holder/security scan per iteration, cached with TTL.
-                due = [
-                    self.tokens[m]
-                    for m in deep
-                    if (
-                        self.tokens[m].graduation
-                        or self.tokens[m].features.get("180", {}).get("raw_unique_buyers", 0) >= 5
-                    )
-                    and now - self.tokens[m].last_security
-                    > (60 if self.tokens[m].priority()[0] >= 90 else self.settings.security_ttl_seconds)
-                ]
-                if due:
-                    token = max(due, key=lambda t: t.priority())
-                    token.last_security = now  # failed refresh also backs off
-                    pairs = [
-                        pair
-                        for _, pair in self.dex.cache.values()
-                        if pair and pair["baseToken"]["address"] == token.mint
-                    ]
-                    known = {p["pairAddress"] for p in pairs}
-                    report = await self.rpc.inspect(token.mint, token.creator, known)
-                    self.submit(
-                        MarketEvent(
-                            mint=token.mint,
-                            ts=time.time(),
-                            source="Solana RPC",
-                            kind="security",
-                            event_id=f"sec:{token.mint}:{now}",
-                            evidence=report,
-                        )
-                    )
-            except (RuntimeError, ValueError, KeyError, TypeError) as exc:
-                log.warning("Enrichment degraded: %s", type(exc).__name__)
-                self.alert("SYSTEM", "", "Provider enrichment unavailable; entries blocked", time.time())
+            await self.enrich_once()
             await asyncio.sleep(5)
 
     def checkpoint(self, now):
@@ -569,8 +653,17 @@ class RadarEngine:
             "recovery_pct": 100 * (token.price / token.grad_low - 1)
             if token.price and math.isfinite(token.grad_low)
             else None,
-            "scores": token.scores,
-            "features": token.features.get("180", {}),
+            "scores": self.display_scores(token),
+            "features": self.display_features(token),
+            "launch_metadata": token.launch_metadata,
+            "trade_evidence": "UNAVAILABLE" if not self.trade_evidence_available() else "OBSERVED_ONLY",
+            "curve_observed_at": token.last_curve or None,
+            "curve_data_quality": "UNKNOWN"
+            if token.curve_progress is None
+            else "CURRENT"
+            if self.settings.mode == "DEMO"
+            or 0 <= now - token.last_curve <= self.settings.curve_poll_seconds * 2
+            else "STALE",
             "security": token.security,
             "decision": token.decision,
             "viability": token.viability,
@@ -589,6 +682,44 @@ class RadarEngine:
             view["transitions"] = self.db.rows("transition", mint=token.mint, limit=100)
             view["signals"] = self.db.rows("signal", mint=token.mint, limit=30)
         return view
+
+    def trade_evidence_available(self):
+        return self.settings.mode == "DEMO" or self.settings.trade_stream_enabled
+
+    def display_scores(self, token):
+        scores = dict(token.scores)
+        scores["trade_evidence"] = "OBSERVED_ONLY" if self.trade_evidence_available() else "UNAVAILABLE"
+        if not self.trade_evidence_available():
+            for group in ["maturity_components", "momentum_components"]:
+                scores[group] = {
+                    key: value
+                    if key in ["age_evidence", "volatility_penalty", "late_chase_penalty"]
+                    else None
+                    for key, value in scores.get(group, {}).items()
+                }
+        return scores
+
+    def display_features(self, token):
+        features = dict(token.features.get("180", {}))
+        if not self.trade_evidence_available():
+            for key in features:
+                if key not in ["volatility_pct", "drawdown_pct", "price_move_pct", "vwap", "currency"]:
+                    features[key] = None
+            features["trade_evidence"] = "UNAVAILABLE"
+        return features
+
+    @staticmethod
+    def provider_health(health):
+        status = (
+            "RATE LIMITED"
+            if health.get("rate_limited_until", 0) > time.time()
+            else "NOT USED YET"
+            if not health.get("attempted", False)
+            else "CURRENT"
+            if health["connected"]
+            else "DEGRADED"
+        )
+        return {**health, "status": status}
 
     def snapshot(self):
         now = time.time()
@@ -617,9 +748,9 @@ class RadarEngine:
                 "out_of_order": self.out_of_order,
                 "pending_outcomes": len(self.collector.pending),
                 "providers": {
-                    "PumpPortal": self.pump.health,
-                    "Solana RPC": self.rpc.health,
-                    "DEX Screener": self.dex.health,
+                    "PumpPortal": self.provider_health(self.pump.health),
+                    "Solana RPC": self.provider_health(self.rpc.health),
+                    "DEX Screener": self.provider_health(self.dex.health),
                 },
             },
             "notice": "Historical or paper performance does not guarantee future results. Liquidity can disappear.",

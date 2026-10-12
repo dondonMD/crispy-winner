@@ -80,7 +80,10 @@ def parse_global(account):
 def curve_progress(curve, global_config):
     # Only apply current global baseline when curve supply and invariant offset match.
     if (
-        curve["token_total_supply"] != global_config["token_total_supply"]
+        curve["real_token_reserves"] > global_config["initial_real_token_reserves"]
+        or curve["real_token_reserves"] > curve["virtual_token_reserves"]
+        or (curve["complete"] and curve["real_token_reserves"] != 0)
+        or curve["token_total_supply"] != global_config["token_total_supply"]
         or curve["virtual_token_reserves"] - curve["real_token_reserves"]
         != global_config["initial_virtual_token_reserves"] - global_config["initial_real_token_reserves"]
     ):

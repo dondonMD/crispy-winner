@@ -38,3 +38,11 @@ post_grad_wait_seconds: 60
 signal_interval_seconds: 30
 horizons: [15, 30, 60, 180, 300, 600, 1800]
 trade_stream_enabled: false
+
+# Observational lifecycle thresholds do not change entry quality/risk gates.
+curve_poll_seconds: 30
+curve_batch_size: 25
+lifecycle_maturing_pct: 30
+lifecycle_near_pct: 85
+security_min_curve_pct: 60
+security_scan_interval_seconds: 30

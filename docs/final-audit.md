@@ -12,3 +12,43 @@
 - No claim of an established positive real-market after-cost expectancy. No autonomous execution, wallet secrets, inbound remote access or telemetry.
 
 Remaining practical constraints are documented in limitations.md, not represented by production stubs. Significant future research: independent prospectively frozen cohorts; accurate route/effective-reserve/fee quotes; bounded funding-source evidence and execution-latency sweeps.
+
+## Free OBSERVE enrichment fix — 2026-10-12
+
+Code inspection reproduced the dependency: full RPC enrichment required migration or five
+observed buyers; with disabled trade subscriptions buyers stayed unobserved and no curve evidence
+could unlock the score-gated lifecycle. Added bounded batched curve RPC, separate observational
+lifecycle thresholds, selective deeper security scans, unavailable trade presentation and truthful
+unused-provider health. Entry thresholds/economics remain conservative; missing trade subscriptions
+now explicitly block entry even if a fixture supplies apparently favourable quality scores.
+
+- Backend: 43 tests passed, including free-mode/no-trade curve monitoring, batched order/cache,
+  malformed accounts, completion vs migration, lifecycle/score separation, scan bounds, failed
+  security refresh, provider states and DEMO/replay. Entry-gate fixtures now explicitly enable
+  trade data to test the existing gates independently. Restricted sandbox suite stalled in
+  DEMO/replay; the complete suite passed outside it.
+- Provider smoke: PumpPortal connected, five live launches in its window; RPC connected; DEX
+  connected, zero matching PumpSwap markets for the probe mint (expected).
+- Isolated 65-second OBSERVE: 16 real launches, 21 curve-account attempts, 18 successful curve
+  observations across repeated polls, 14 candidates with progress at final snapshot (0–6.43%).
+  Eight HTTP RPC request starts, 0.1231 requests/second averaged over the window. Active/deep
+  candidates 16/16; 93.5MB sampled RSS; no provider errors/rate limits; PumpPortal/RPC CURRENT,
+  DEX NOT USED YET with zero requests. Zero paid trade subscriptions; paper cash $20.
+- No live MATURING/NEAR_GRADUATION/migration example occurred in the initial window. Full security
+  scanning was not triggered by the low observed progress; bounded higher-progress behaviour
+  is covered by fixtures. This is a short connectivity/resource observation, not a sustained
+  load benchmark or proof of positive after-cost expectancy.
+
+- Frontend: three tests passed, including unused/current/degraded/rate-limited provider wording
+  and null metrics; strict TypeScript and production build passed. Ruff, mypy (18 modules)
+  and the basic source secret scan passed. No browser automation was used.
+
+Final repeat after all backend tests passed: provider smoke observed three launches with all
+three providers connected and zero expected probe markets. The final 65-second isolated OBSERVE
+run discovered 18 launches and made 28 curve-account observations, all successfully parsed with
+compatible progress. Final active/deep counts were 18/18, RSS 93.6MB, ten RPC request starts
+(0.1538/second). PumpPortal/RPC ended CURRENT; DEX remained NOT USED YET with zero requests.
+RPC recorded three throttling errors and a Retry-After cooldown timestamp, then recovered.
+One real token reached 70.76% and MATURING without trade events; no NEAR_GRADUATION or migration
+was witnessed. Zero paid subscriptions and $20 paper cash remained. This supersedes the initial
+window's absence of MATURING; fixture coverage still supplies the near-graduation/migration cases.

@@ -41,7 +41,7 @@ class MarketEvent(BaseModel):
     mint: str = Field(min_length=1, max_length=64)
     ts: float = Field(ge=0, allow_inf_nan=False)
     source: str = Field(max_length=32)
-    kind: str = Field(pattern="^(create|trade|market|migration|security)$")
+    kind: str = Field(pattern="^(create|trade|market|migration|security|curve)$")
     event_id: str = Field(max_length=150)
     name: str = Field(default="", max_length=100)
     symbol: str = Field(default="", max_length=30)
@@ -139,6 +139,10 @@ class Token:
     last_analysis: float = 0
     viability_key: tuple | None = None
     last_security: float = 0
+    last_security_attempt: float = 0
+    last_curve_attempt: float = 0
+    last_curve: float = 0
+    launch_metadata: dict = field(default_factory=dict)
     degraded: bool = False
     disagreement: bool = False
     source_prices: dict = field(default_factory=dict)
@@ -165,6 +169,7 @@ class Token:
                 State.MATURING: 70,
                 State.WATCHING: 30,
             }.get(self.state, 0),
+            self.curve_progress if self.curve_progress is not None else -1,
             self.scores.get("maturity", 0),
             self.mint,
         )

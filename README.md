@@ -44,7 +44,7 @@ Visit **http://127.0.0.1:8765**. FastAPI serves compiled assets and SSE. Build o
 ## Modes and configuration
 
 - `DEMO`: offline deterministic simulated scenarios; separate database/account, prominently labelled.
-- `OBSERVE`: default real discovery/migration, no wallet or trades.
+- `OBSERVE`: real discovery/migration and bounded verified curve monitoring; no wallet or trades.
 - `PAPER`: real data, durable simulated account and delayed fills after strict gates.
 - `MANUAL ASSIST`: reports and venue links; actual purchase remains external/manual.
 
@@ -56,12 +56,23 @@ Set `RADAR_MODE` before running (`$env:RADAR_MODE='PAPER'` on Windows). `RADAR_C
 |---|---|---|
 | PumpPortal | New launch and migration WebSocket | Free streams verified without key; one connection |
 | PumpPortal optional trades | Bounded wallet-level candidate trades | Opt-in API key; funded provider account; docs currently 0.01 SOL/10,000 events |
-| Solana public RPC | Authorities, Token-2022, holders, creator balances, pool/curve verification | Free, throttled; custom URL optional |
+| Solana public RPC | Batched pre-grad curve progress; selective authorities, Token-2022, holders, creator balances, pool/curve verification | Free, throttled; custom URL optional |
 | DEX Screener | Batched post-grad USD price/liquidity | Public/free; 30 addresses per batch; local TTL/limiter |
 | Helius | Optional replacement standard RPC URL | Provider plan/key; no premium streaming dependency |
 | Jupiter | Evaluated, not used in v1 | No requests or execution integration |
 
 Detailed verified docs: [providers](docs/providers), [research](docs/research.md). No funded trade-stream key was supplied during development. **Free sources cannot establish independent buyer flow**; the system waits rather than inventing it. Enable metered subscriptions only knowingly using `trade_stream_enabled: true` and private `PUMPPORTAL_API_KEY`. No provider wallet key/seed is stored here.
+
+Free OBSERVE polls derived curve PDAs for the top bounded deep set using `getMultipleAccounts`,
+including a cached global baseline. Verified progress can advance lifecycle states at 30%/85%;
+**Near graduation describes lifecycle, not investment quality or BUY**. Progress does not raise
+maturity, momentum, or buyer-quality scores. Selective full security scans start at verified 60%
+progress or migration. Missing trade subscriptions show buyer/flow metrics as unavailable and
+explicitly block entries. DEX is queried only for migrated deep candidates.
+
+HTTP provider health starts **NOT USED YET**, becomes **CURRENT** after successful activity,
+**DEGRADED** after failed requests, and **RATE LIMITED** during Retry-After cooldown.
+See the operating guide for polling limits and configuration.
 
 ## Dashboard
 
@@ -98,15 +109,16 @@ npm --prefix frontend run build
 python scripts/check_secrets.py
 python scripts/profile.py --events 5000
 python scripts/smoke_providers.py
+python scripts/smoke_observe.py
 ```
 
-The last command makes read-only free-provider network requests; never subscribes to paid trades. Unit/integration tests use isolated fixtures for failures and unknown data, not production mocks. Some restricted sandboxes block asyncio thread wake-up sockets; tests need a normal local process. [Measured performance](docs/performance.md).
+The last two commands make read-only free-provider network requests; never subscribes to paid trades. Unit/integration tests use isolated fixtures for failures and unknown data, not production mocks. Some restricted sandboxes block asyncio thread wake-up sockets; tests need a normal local process. [Measured performance](docs/performance.md).
 
 ## Storage and resources
 
 SQLite WAL; indexed records and restart-safe event identities. Raw events/dedup 24h, candidate/security/creator/graduation/state snapshots 30d, signals/outcomes/session context 90d. Paper accounts/trades, strategy/evidence versions and evaluation summaries are protected. 1GB default soft cap, warnings 70/85/95%; eligible retention cleanup/checkpoint, then block new expendable writes if still full. VACUUM only via explicit optimize, never continuously. Back up the database after stopping.
 
-Defaults: 250 candidates, 25 deep subscriptions, 500 events/token, 1,000 queue slots, 2,000 pending outcomes, bounded caches and charts. 700MB RSS soft guard reduces monitoring, trims buffers and degrades data; it does not promise an OS-enforced memory cap. Measured synthetic load was far below 500MB. No full historical DB is loaded into RAM.
+Defaults: 250 candidates, 25 deep monitored tokens (optional trade subscriptions), 500 events/token, 1,000 queue slots, 2,000 pending outcomes, bounded caches and charts. 700MB RSS soft guard reduces monitoring, trims buffers and degrades data; it does not promise an OS-enforced memory cap. Measured synthetic load was far below 500MB. No full historical DB is loaded into RAM.
 
 ## Troubleshooting and safety
 

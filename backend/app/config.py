@@ -50,10 +50,18 @@ class Settings(BaseModel):
     post_grad_wait_seconds: float = Field(default=60, ge=30)
     signal_interval_seconds: float = Field(default=30, ge=10)
     horizons: list[int] = [15, 30, 60, 180, 300, 600, 1800]
+    curve_poll_seconds: float = Field(default=30, ge=10)
+    curve_batch_size: int = Field(default=25, ge=1, le=50)
+    lifecycle_maturing_pct: float = Field(default=30, ge=1, le=85)
+    lifecycle_near_pct: float = Field(default=85, ge=50, le=100)
+    security_min_curve_pct: float = Field(default=60, ge=30, le=100)
+    security_scan_interval_seconds: float = Field(default=30, ge=10)
     trade_stream_enabled: bool = False
 
     @model_validator(mode="after")
     def consistent(self):
+        if self.lifecycle_maturing_pct >= self.lifecycle_near_pct:
+            raise ValueError("lifecycle thresholds must be ordered")
         if self.max_deep > self.max_candidates:
             raise ValueError("deep set exceeds candidate limit")
         if not self.horizons or any(h <= 0 for h in self.horizons):
