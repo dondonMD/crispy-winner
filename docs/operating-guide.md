@@ -93,3 +93,20 @@ uses two hot slots in the isolated temporary probe to make background membership
 exercise. The report includes the configured limit; this does not edit application settings or
 replace the 25-hot default resource/fairness verification. Do not present this diagnostic as a
 production-default measurement.
+
+## FOMO Companion
+
+Choose **FOMO Companion** in the left navigation. Its summary counts actions separately from lifecycle. Filter by action, lifecycle or attention; search name, symbol or full/partial mint. ENTRY CANDIDATE comes first, then high/medium/low attention waits, TOO LATE and REJECT. Within each group existing scanner priority is retained.
+
+- **ENTRY CANDIDATE:** existing strategy and current evidence/economic gates permit manual review. Check the supplied manual position ceiling, round-trip costs, break-even move and validity conditions. This is not BUY NOW or a profit forecast.
+- **WAIT:** required conditions are missing. Read Current blockers and Evidence completeness; satisfying a blocker never promises entry. HIGH ATTENTION can coexist with WAIT.
+- **REJECT:** core risk failures currently reject the setup. There is no frontend override.
+- **TOO LATE:** the core strategy considers entry chasing. No invented pullback target is supplied.
+
+Use **View intelligence** for the same current decision above technical details. **Copy mint** copies the complete exact mint; “Copied” confirms success. If clipboard permission/API is unavailable, focus the read-only mint field, select and copy manually. Open FOMO yourself, paste the mint and review there. The app never executes trades, opens an invented FOMO link, connects a wallet or logs clipboard contents. Existing Pump.fun links remain explicitly manual.
+
+Curve current and session peak are distinct; retreat is descriptive percentage points, not a recommendation. Unknown security displays UNKNOWN with no sentinel risk score. Trade stream not subscribed means buyer breadth/flow are unavailable, not observed zeros. A nonviable position allowance is genuinely $0; unknown costs remain dashes. The $20 account and 20% default allocation remain unchanged.
+
+DEMO shows an unmistakable banner and a separate four-action synthetic showcase excluded from action counts and strategy evidence. `python scripts/smoke_companion.py` verifies it using a temporary database. In free OBSERVE, zero entries is a valid outcome; historical edge remains unvalidated. Notifications require an explicit browser-alert click; entry alerts require a current backend companion entry decision.
+
+Manual visual checks: visit the page at desktop and narrow widths; filter WAIT/NEAR GRADUATION, inspect current vs peak, copy a full mint, and open intelligence. In DEMO, scroll to the labelled synthetic cards to see all four badge texts. Watch SSE replace current action when evidence changes.

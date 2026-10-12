@@ -8,6 +8,7 @@ from collections import deque, OrderedDict
 from alembic import command
 from alembic.config import Config
 
+from backend.app.companion import companion_view
 from backend.app.config import ROOT
 from backend.app.db import Database
 from backend.app.domain import Deduplicator, MarketEvent, PriorityBuffer, State, Token, TRANSITIONS
@@ -762,6 +763,20 @@ class RadarEngine:
 
     def token_view(self, token, now, detail=False):
         view = {
+            "companion": companion_view(
+                token,
+                self.settings,
+                now,
+                evidence=self.approved_evidence,
+                healthy=self.settings.mode == "DEMO"
+                or (
+                    self.pump.health["connected"]
+                    and self.rpc.health["connected"]
+                    and (token.graduation is None or self.dex.health["connected"])
+                ),
+                resource_pressure=self.metrics.get("resource_pressure", False)
+                or self.metrics.get("storage_full", False),
+            ).model_dump(mode="json"),
             "mint": token.mint,
             "name": token.name,
             "symbol": token.symbol,
@@ -807,6 +822,13 @@ class RadarEngine:
             view["transitions"] = self.db.rows("transition", mint=token.mint, limit=100)
             view["signals"] = self.db.rows("signal", mint=token.mint, limit=30)
         return view
+
+    def companion_examples(self, now):
+        if self.settings.mode != "DEMO":
+            return []
+        from backend.app.demo import companion_examples
+
+        return companion_examples(self.settings, now)
 
     def trade_evidence_available(self):
         return self.settings.mode == "DEMO" or self.settings.trade_stream_enabled
@@ -859,6 +881,7 @@ class RadarEngine:
             "strategy_version": self.version,
             "timestamp": now,
             "tokens": [self.token_view(t, now) for t in tokens],
+            "companion_examples": self.companion_examples(now),
             "paper": self.paper.summary(self.tokens),
             "lab": self.lab,
             "alerts": list(self.alerts),

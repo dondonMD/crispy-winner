@@ -75,7 +75,11 @@ async def main(seconds=65, max_deep=25):
                 peaks["background"] = max(
                     peaks["background"], len(engine.background_tokens(engine.deep_mints()))
                 )
+            requests_before_views = engine.rpc.health["requests"]
             snap = engine.snapshot()
+            for _ in range(100):
+                engine.snapshot()
+            companion_view_requests = engine.rpc.health["requests"] - requests_before_views
             elapsed = time.monotonic() - start
             report = {
                 "elapsed_seconds": round(elapsed, 2),
@@ -118,6 +122,18 @@ async def main(seconds=65, max_deep=25):
                     for t in engine.tokens.values()
                     if t.curve_progress is not None
                 ],
+                "additional_rpc_requests_for_101_snapshots": companion_view_requests,
+                "companion_actions": {
+                    action: sum(t["companion"]["action"] == action for t in snap["tokens"])
+                    for action in ["ENTRY_CANDIDATE", "WAIT", "REJECT", "TOO_LATE"]
+                },
+                "companion_high_attention_waits": sum(
+                    t["companion"]["action"] == "WAIT" and t["companion"]["attention"] == "HIGH"
+                    for t in snap["tokens"]
+                ),
+                "companion_trade_unavailable": all(
+                    t["companion"]["trade_evidence"] == "UNAVAILABLE" for t in snap["tokens"]
+                ),
                 "trade_subscriptions": len(engine.pump.subscribed),
                 "paper_cash": engine.paper.state["cash"],
             }

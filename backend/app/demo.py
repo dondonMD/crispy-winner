@@ -109,3 +109,80 @@ def demo_events(start, tick, seed=47, namespace=""):
                 )
             )
     return events
+
+
+def companion_examples(settings, now):
+    """Isolated UI fixtures: never admitted to scanner, collector or paper account."""
+    from backend.app.companion import companion_view
+    from backend.app.domain import Token, State
+    from backend.app.economics import PositionSizer, TradeCostEstimator, evaluate_candidate
+
+    if settings.mode != "DEMO":
+        return []
+    evidence = {
+        "count": settings.min_holdout_samples + 100,
+        "lower_ci": 2,
+        "expectancy_net_pct": 5,
+        "status": "SIMULATED UI FIXTURE",
+    }
+    result = []
+    for label in ["Entry", "Wait", "Reject", "Too late"]:
+        t = Token(
+            f"DEMO-COMPANION-{label.replace(' ', '-')}",
+            f"SIMULATED {label}",
+            "DEMO",
+            now - 600,
+            "SIMULATED creator",
+        )
+        t.state = State.POST_GRAD_OBSERVATION
+        t.security = {
+            "data_quality": "SIMULATED",
+            "risk_score": 10,
+            "hard_failures": [],
+            "warnings": ["SIMULATED UI fixture; not research evidence"],
+            "top_1_independent_pct": 4,
+            "top_5_independent_pct": 15,
+            "creator_pct": 2,
+            "last_updated": now,
+        }
+        t.graduation = now - settings.post_grad_wait_seconds - 60
+        t.grad_high, t.grad_low, t.price, t.liquidity = 1.2, 1, 1.05, 25000
+        t.last_price = t.last_trade = t.last_liquidity = t.last_curve = now
+        t.curve_progress, t.curve_peak_progress = 87, 89
+        t.features = {
+            "180": {
+                "creator_sell_volume": 0,
+                "estimated_independent_buyers": settings.min_buyers + 10,
+                "units_valid": True,
+                "buy_pressure_persistence": 0.8,
+                "whale_share": 0.1,
+            }
+        }
+        t.scores = {
+            "maturity": max(80, settings.min_maturity),
+            "momentum": max(85, settings.min_momentum),
+            "chase": 0,
+        }
+        t.viability = PositionSizer(settings, TradeCostEstimator(settings)).size(20, t.liquidity, 5, 1)
+        if label == "Wait":
+            t.last_trade = 0
+            t.graduation = None
+            t.state = State.NEAR_GRADUATION
+        elif label == "Reject":
+            t.security["hard_failures"] = ["SIMULATED active freeze authority"]
+        elif label == "Too late":
+            t.scores["chase"] = settings.max_chase
+        t.decision = evaluate_candidate(t, settings, now, evidence=evidence)
+        result.append(
+            {
+                "mint": t.mint,
+                "name": t.name,
+                "symbol": t.symbol,
+                "state": t.state.value,
+                "liquidity": t.liquidity,
+                "viability": t.viability,
+                "features": t.features["180"],
+                "companion": companion_view(t, settings, now, evidence=evidence).model_dump(mode="json"),
+            }
+        )
+    return result

@@ -57,3 +57,13 @@ Curve events include hot/background provenance and remain replayable. Health rep
 hot/background batches, actual curve HTTP request starts (including retries), attempted/returned
 curve-account counts, verified observations, background size/due count, oldest attempt age and
 background backoff deadline. These scheduler counters reset each process session and are bounded.
+
+## FOMO Companion
+
+`backend/app/companion.py` is a pure, typed presentation layer over Token and the core decision. It maps WAIT, REJECT and MISSED to WAIT, REJECT and TOO LATE. A stored ALLOW_PAPER_ENTRY is revalidated using the unchanged `evaluate_candidate()` and the engine's frozen approved evidence, provider health and resource-pressure context. Additional structured checks require positive finite position size, current security/trade/market evidence and economics. Unknown, stale or inconsistent evidence fails closed; no frontend threshold strategy or English-reason parsing determines entry.
+
+`token_view()` supplies identical companion results to dashboard/SSE and token detail. No new endpoints, acquisition tasks, RPC/DEX requests, trade subscriptions, strategy settings or state transitions are introduced. Attention derives from current lifecycle and freshness; session peak is descriptive only. Existing two-second SSE snapshots update the queue and detail decision; the existing single selected-token detail request supplies technical history. Evicted tokens lose their current detail panel. Entry alerts also require a current backend companion entry result.
+
+React cards show action text, attention, current/peak curve, evidence quality, blockers and existing economics. Local clipboard access is the only new browser integration. Development-only DOM tests use [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) and [Vitest's jsdom environment](https://vitest.dev/guide/environment.html); production retains React/CSS without a new framework.
+
+DEMO-only `companion_examples()` creates four synthetic core-evaluated UI snapshots outside engine.tokens, the outcome collector and paper account. Real snapshots return no examples and never inherit fixture evidence. Bounded active/hot/background monitoring and public RPC backoff are unchanged.

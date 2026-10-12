@@ -136,3 +136,29 @@ Defaults: 250 candidates, 25 deep monitored tokens (optional trade subscriptions
 - Resource/database pressure: inspect health, stop/reduce monitoring, run maintenance when offline; protected histories are never automatically discarded.
 
 [Operating guide](docs/operating-guide.md), [architecture](docs/architecture.md), [known limitations](docs/limitations.md). Windows scripts are supplied but this build was measured/tested on Linux/WSL. No real after-cost trading edge is established yet.
+
+## FOMO Companion
+
+FOMO Companion provides deterministic, local manual decision support from the existing backend strategy. ENTRY CANDIDATE means the core strategy currently permits paper entry and current security, trade evidence, liquidity, approved historical evidence and after-cost economics still pass. It does not predict profit or execute trades. WAIT explains missing conditions; REJECT shows core risk failures; TOO LATE maps the existing missed/chase decision. HIGH ATTENTION is monitoring priority, never investment confidence. Near graduation is lifecycle progress, not a buy.
+
+```text
+CRISPY WINNER
+      │
+      ├── scans launches
+      ├── filters risk
+      ├── monitors lifecycle
+      ├── evaluates evidence/economics
+      └── companion decision
+              ↓
+      ENTRY CANDIDATE / WAIT / REJECT / TOO LATE
+              ↓
+           COPY MINT
+              ↓
+           FOMO APP
+              ↓
+      manual user decision
+```
+
+Open **FOMO Companion**, filter the action queue, inspect blockers and evidence completeness, then use **Copy mint** and paste the exact mint into your own trading interface. No FOMO integration, invented deep link, wallet connection or transaction submission exists. Clipboard failure offers a selectable mint for manual copying. Token Intelligence puts the same decision above technical evidence.
+
+The $20 account retains the existing maximum 20% allocation: proposed and economically allowed positions come from the economics engine; a manual ceiling exists only for ENTRY CANDIDATE. Missing costs and targets remain unavailable. Free OBSERVE lacks buyer-flow evidence, so high curve progress can correctly remain WAIT. No validated real-market edge has been established. DEMO includes four clearly labelled, isolated synthetic UI examples; they never enter the scanner, paper ledger or Strategy Lab. [Operating guide](docs/operating-guide.md), [limitations](docs/limitations.md).

@@ -35,3 +35,13 @@
 - Background fairness is scheduling fairness under available RPC/resources, not proof that every
   account parsed successfully. Backoff can extend refresh intervals and candidates can expire.
   Background attempts are single-request probes and never trigger holder scans or DEX queries.
+
+## FOMO Companion
+
+The companion translates current evidence and conservative strategy decisions; it does not establish a validated real-market edge or predict profitability. ENTRY CANDIDATE permits manual review only. Speculative tokens can lose most or all value. Lifecycle progress, session peak, attention and uncalibrated chase scores are not success probabilities.
+
+Free OBSERVE cannot supply buyer breadth/flow without subscribed trade evidence. High-progress or migrated tokens can remain WAIT because security, liquidity, recovery, fresh trade evidence or approved historical evidence is missing. Missing economic values remain unavailable; no calibrated maximum entry, take-profit, stop-loss or pullback price is invented. Pool cost estimates retain their existing approximation limitations.
+
+No FOMO deep-link/API contract is assumed. Copy mint and manual search are the complete workflow. Clipboard permissions may fail, with manual copying available. No wallet, private key, transaction, LLM explanation service, telemetry or trading endpoint is added. Optional watchlist and watched-token notifications are deferred UX work; current backend classification and existing entry notifications take priority.
+
+The current interface depends on existing SSE delivery. Disconnection remains visibly warned; an old screen must not be treated as current evidence. Data acquisition remains bounded and provider-dependent. Four DEMO UI fixtures include explicitly synthetic historical evidence solely to exercise presentation; they are never accepted as real evidence or passed to paper trading/Strategy Lab. DOM tests cover behavior, but visual layout still needs human browser review.
