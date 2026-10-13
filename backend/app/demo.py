@@ -164,6 +164,15 @@ def companion_examples(settings, now):
             "chase": 0,
         }
         t.viability = PositionSizer(settings, TradeCostEstimator(settings)).size(20, t.liquidity, 5, 1)
+        if label == "Entry":
+            t.features["180"].update(
+                buy_volume=24.0,
+                sell_volume=8.0,
+                flow_ratio=3.0,
+                net_flow=16.0,
+                flow_balance=0.5,
+                currency="SOL",
+            )
         if label == "Wait":
             t.last_trade = 0
             t.graduation = None

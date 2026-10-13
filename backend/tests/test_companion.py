@@ -13,6 +13,7 @@ S = Settings(mode="OBSERVE", trade_stream_enabled=True)
 
 def entry():
     t = candidate()
+    t.features["180"]["flow_ratio"] = 3.0
     t.decision = evaluate_candidate(t, S, 1000, evidence=evidence())
     return t
 
@@ -109,6 +110,55 @@ def test_demo_examples_isolated_and_real_never_gets_defaults():
     assert all("SIMULATED" in t["name"] for t in examples)
     assert companion_examples(S, 1000) == []
     assert companion_view(entry(), S, 1000).action == "WAIT"
+
+
+def test_demo_entry_has_coherent_flow_and_wait_has_unavailable_evidence():
+    examples = companion_examples(Settings(mode="DEMO"), 1000)
+    assert examples == companion_examples(Settings(mode="DEMO"), 1000)
+    demo_entry, wait = examples[:2]
+    flow = demo_entry["features"]
+    assert demo_entry["companion"]["trade_evidence"] == "CURRENT"
+    assert demo_entry["companion"]["evidence_quality"]["Trade flow"] == "CURRENT"
+    assert flow["estimated_independent_buyers"] > 0
+    assert flow["flow_ratio"] == flow["buy_volume"] / flow["sell_volume"] == 3
+    assert flow["net_flow"] == flow["buy_volume"] - flow["sell_volume"]
+    assert wait["companion"]["action"] == "WAIT"
+    assert wait["companion"]["trade_evidence"] == "UNAVAILABLE"
+    assert wait["companion"]["evidence_quality"]["Trade flow"] == "UNAVAILABLE"
+    assert "flow_ratio" not in wait["features"]
+
+
+@pytest.mark.parametrize("field", ["flow_ratio", "estimated_independent_buyers"])
+@pytest.mark.parametrize("value", [None, True, -1, float("nan"), float("inf"), "3"])
+def test_missing_or_invalid_structured_trade_fails_closed(field, value):
+    t = entry()
+    t.features["180"][field] = value
+    before = deepcopy(t)
+    view = companion_view(t, S, 1000, evidence=evidence())
+    assert view.action == "WAIT"
+    assert view.trade_evidence == "UNAVAILABLE"
+    assert view.manual_position_cap_usd is None
+    assert "Need observed trade/buyer evidence" in view.missing_evidence
+    assert t == before
+
+
+def test_absent_flow_does_not_change_observe_core_decision():
+    t = entry()
+    del t.features["180"]["flow_ratio"]
+    before = deepcopy(t)
+    assert evaluate_candidate(t, S, 1000, evidence=evidence())["decision"] == "ALLOW_PAPER_ENTRY"
+    assert companion_view(t, S, 1000, evidence=evidence()).action == "WAIT"
+    assert t == before
+    assert companion_examples(S, 1000) == []
+
+
+@pytest.mark.parametrize("field", ["flow_ratio", "estimated_independent_buyers", "units_valid"])
+def test_absent_required_trade_fields_fail_closed(field):
+    t = entry()
+    del t.features["180"][field]
+    view = companion_view(t, S, 1000, evidence=evidence())
+    assert view.action == "WAIT"
+    assert view.trade_evidence == "UNAVAILABLE"
 
 
 def test_engine_snapshot_detail_share_current_view_without_provider_activity(tmp_path):

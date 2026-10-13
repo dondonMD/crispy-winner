@@ -58,11 +58,6 @@ def companion_view(
 ) -> CompanionResult:
     """Never upgrade a core decision. Reuse its evaluator to defend old entry snapshots."""
     core = token.decision.get("decision", "WAIT")
-    checked = (
-        evaluate_candidate(token, settings, now, healthy, resource_pressure, evidence)
-        if core == "ALLOW_PAPER_ENTRY"
-        else token.decision
-    )
     action = {"REJECT": Action.REJECT, "MISSED": Action.TOO_LATE}.get(core, Action.WAIT)
     blockers = list(token.decision.get("reasons", []))
     security = token.security
@@ -73,7 +68,20 @@ def companion_view(
         and 0 <= now - security.get("last_updated", 0) <= settings.security_ttl_seconds
     )
     security_quality = quality if security_current or quality == "UNKNOWN" else "STALE"
-    trade_current = (settings.mode == "DEMO" or settings.trade_stream_enabled) and (
+    features = token.features.get("180", {})
+    structured_trade = features.get("units_valid") is True and all(
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and value >= 0
+        for value in (features.get("estimated_independent_buyers"), features.get("flow_ratio"))
+    )
+    checked = (
+        evaluate_candidate(token, settings, now, healthy, resource_pressure, evidence)
+        if core == "ALLOW_PAPER_ENTRY" and structured_trade
+        else {"decision": "WAIT", "reasons": token.decision.get("reasons", [])}
+    )
+    trade_current = structured_trade and (settings.mode == "DEMO" or settings.trade_stream_enabled) and (
         token.last_trade > 0 and 0 <= now - token.last_trade <= settings.max_data_age_seconds
     )
     market_current = all(
@@ -172,7 +180,7 @@ def companion_view(
         trade_evidence="CURRENT"
         if trade_current
         else "UNAVAILABLE"
-        if not (settings.mode == "DEMO" or settings.trade_stream_enabled)
+        if not structured_trade or not (settings.mode == "DEMO" or settings.trade_stream_enabled)
         else "STALE / UNKNOWN",
         security_quality=security_quality,
         security_risk_score=security.get("risk_score") if security_current else None,
