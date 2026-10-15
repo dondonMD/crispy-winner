@@ -55,14 +55,21 @@ class HttpProvider:
             "rate_limits": 0,
         }
 
+    def request_failed(self):
+        self.health["connected"] = False
+
     async def request(self, method, url, retry_attempts=3, **kwargs):
         retry_attempts = min(3, max(1, retry_attempts))
         for attempt in range(retry_attempts):
             async with self.limiter.semaphore:
                 cooldown = self.health["rate_limited_until"] - time.time()
                 if cooldown > 0:
+                    if isinstance(self, SolanaProvider):
+                        raise RuntimeError("RPC cooling down")
                     await asyncio.sleep(cooldown)
                 await self.limiter.wait()
+                if isinstance(self, SolanaProvider) and not self.eligible():
+                    raise RuntimeError("RPC pressure cooldown")
                 self.health.update(attempted=True, last_attempt=time.time())
                 self.health["requests"] += 1
                 started = time.monotonic()
@@ -70,24 +77,27 @@ class HttpProvider:
                     async with self.client.stream(method, url, **kwargs) as response:
                         if response.status_code == 429:
                             try:
-                                delay = min(120, max(1, float(response.headers.get("Retry-After", "2"))))
+                                delay = max(1, float(response.headers.get("Retry-After", "2")))
+                                if not math.isfinite(delay):
+                                    delay = 2
                             except ValueError:
                                 from email.utils import parsedate_to_datetime
 
                                 try:
-                                    delay = min(
-                                        120,
-                                        max(
-                                            1,
-                                            parsedate_to_datetime(response.headers["Retry-After"]).timestamp()
-                                            - time.time(),
-                                        ),
+                                    delay = max(
+                                        1,
+                                        parsedate_to_datetime(response.headers["Retry-After"]).timestamp()
+                                        - time.time(),
                                     )
                                 except (KeyError, ValueError, TypeError):
                                     delay = 2
                             self.health["rate_limits"] += 1
                             self.health["rate_limited_until"] = time.time() + delay
                             self.health["errors"] += 1
+                            self.health["connected"] = False
+                            self.request_failed()
+                            if isinstance(self, SolanaProvider):
+                                raise RuntimeError("Provider rate limited; scheduler will retry")
                         else:
                             response.raise_for_status()
                             chunks = bytearray()
@@ -104,6 +114,7 @@ class HttpProvider:
                             return data
                 except (httpx.HTTPError, ValueError) as exc:
                     self.health["errors"] += 1
+                    self.request_failed()
                     # Avoid URLs in logs: optional keys live in URL query strings.
                     log.warning("%s request failed: %s", self.name, type(exc).__name__)
                     delay = 2**attempt + random.random()
@@ -117,23 +128,79 @@ class HttpProvider:
 
 
 class SolanaProvider(HttpProvider):
-    def __init__(self, client=None):
+    def __init__(self, client=None, settings=None):
+        from backend.app.config import Settings
+
         super().__init__("Solana RPC", 2, client)
+        self.settings = settings or Settings()
+        self.health.update(
+            backoff_level=0,
+            next_eligible_rpc=0.0,
+            successful_requests=0,
+            curve_successful_requests=0,
+            curve_accounts=0,
+        )
+        self.healthy_since = 0.0
+        self.healthy_requests = 0
         self.url = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
         self.global_cache = None
         self.global_cached_at = 0.0
 
+    def request_failed(self):
+        level = min(self.settings.rpc_backoff_max_level, self.health["backoff_level"] + 1)
+        self.health["backoff_level"] = level
+        self.healthy_since = 0.0
+        self.healthy_requests = 0
+        self.health["next_eligible_rpc"] = max(
+            self.health["rate_limited_until"],
+            time.time() + min(self.settings.rpc_cooldown_max_seconds, 5 * 2 ** (level - 1)),
+        )
+
+    def eligible(self, tier="hot"):
+        now = time.time()
+        return now >= max(self.health["rate_limited_until"], self.health["next_eligible_rpc"]) and (
+            tier != "background"
+            or self.health["backoff_level"] < 3
+            or now >= self.health["next_eligible_rpc"] + self.interval(30, "background")
+        )
+
+    def interval(self, normal, tier):
+        level = self.health["backoff_level"]
+        multiplier = min(
+            self.settings.rpc_interval_max_multiplier, (1 + 0.75 * level) if tier == "hot" else 2**level
+        )
+        return normal * multiplier
+
+    def request_succeeded(self):
+        now = time.time()
+        self.health["successful_requests"] += 1
+        if not self.healthy_since:
+            self.healthy_since = now
+        self.healthy_requests += 1
+        if (
+            self.healthy_requests >= self.settings.rpc_recovery_successes
+            and now - self.healthy_since >= self.settings.rpc_recovery_seconds
+        ):
+            self.health["backoff_level"] = max(0, self.health["backoff_level"] - 1)
+            self.healthy_since = now
+            self.healthy_requests = 0
+
     async def rpc(self, method, params, retry_attempts=3):
+        if not self.eligible():
+            raise RuntimeError("RPC pressure cooldown")
+        self.limiter.interval = self.interval(0.5, "security")
         data = await self.request(
             "POST",
             self.url,
             json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
-            retry_attempts=retry_attempts,
+            retry_attempts=1,  # Return failures to the shared scheduler, never amplify pressure.
         )
         if "error" in data or "result" not in data:
             self.health["connected"] = False
             self.health["errors"] += 1
-            raise ValueError("RPC returned an error or missing result")
+            self.request_failed()
+            raise RuntimeError("RPC returned an error or missing result")
+        self.request_succeeded()
         return data["result"]
 
     async def curve_progress_batch(self, mints, batch_size=25, retry_attempts=3):
@@ -158,7 +225,12 @@ class SolanaProvider(HttpProvider):
         )
         values = result.get("value")
         if not isinstance(values, list) or len(values) != len(addresses):
+            self.health["errors"] += 1
+            self.health["connected"] = False
+            self.request_failed()
             raise ValueError("Incomplete curve batch")
+        self.health["curve_successful_requests"] += 1
+        self.health["curve_accounts"] += len(mints)
         if refresh:
             self.global_cache = None  # Never retain an incompatible/stale baseline after failure.
             try:
@@ -183,6 +255,8 @@ class SolanaProvider(HttpProvider):
         return reports
 
     async def inspect(self, mint, creator="", known_accounts=None):
+        if not self.eligible("security"):
+            raise RuntimeError("Security scan deferred under RPC pressure")
         Pubkey.from_string(mint)  # reject malformed addresses before network requests
         account = await self.rpc(
             "getAccountInfo", [mint, {"encoding": "jsonParsed", "commitment": "confirmed"}]
@@ -413,8 +487,10 @@ class PumpPortalProvider:
                     await ws.send(json.dumps({"method": "subscribeNewToken"}))
                     await ws.send(json.dumps({"method": "subscribeMigration"}))
                     self.subscribed = set()
-                    attempt = 0
+                    connected_at = time.monotonic()
                     while True:
+                        if time.monotonic() - connected_at >= 60:
+                            attempt = 0
                         if self.settings.trade_stream_enabled:
                             target = set(self.candidates())
                             for method, keys in [

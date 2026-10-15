@@ -30,15 +30,17 @@ immutable strategy versions; historical scores/evaluations retain their original
 The enrichment loop checks every five seconds but each selected token backs off for the polling
 interval, including failures. One batch can contain at most 50 curves plus the global account,
 well below Solana's 100-account limit. Stable default deep sets need roughly one curve request
-per 30 seconds; churn can generate one batch per five-second loop. A full security scan uses
+per 30 seconds; a global batch guard also applies during hot-set churn. A full security scan uses
 several RPC requests (roughly 6–9 depending on creator/pools) and starts at most once per 30
-seconds. Background sweeping adds at most one batch per 30 seconds when healthy. The shared limiter allows at most two requests/second, two concurrent HTTP requests;
-the funnel itself is serial. Existing response caps, candidate bounds and resource-pressure
+seconds when healthy. Background sweeping adds at most one batch per 30 seconds when healthy. The shared limiter allows at most two requests/second, two concurrent HTTP requests;
+the funnel itself is serial. Adaptive pressure reduces request cadence and spacing; see
+[rpc-pressure.md](rpc-pressure.md). Existing response caps, candidate bounds and resource-pressure
 reduction remain active. Retry-After cooldown is honoured across requests. Public RPC can still
 throttle; unknown/stale evidence blocks entries.
 
 System Health: NOT USED YET means no attempted request, CURRENT means successful transport/RPC
-activity, DEGRADED means attempted activity failed, RATE LIMITED means an active cooldown.
+activity, DEGRADED means attempted activity failed, RATE LIMITED means an active Retry-After cooldown,
+and BACKING OFF means adaptive RPC pressure remains elevated during recovery.
 CURRENT does not mean a token's security/progress is known. DEX normally remains NOT USED YET
 until a migrated candidate needs market data. PumpPortal CURRENT describes its live connection.
 

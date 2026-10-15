@@ -57,7 +57,7 @@ class RadarEngine:
         self.out_of_order = 0
         self.duplicates = 0
         self.rejected_payloads = 0
-        self.rpc = SolanaProvider()
+        self.rpc = SolanaProvider(settings=settings)
         self.dex = DexScreenerProvider()
         self.pump = PumpPortalProvider(settings, self.submit, self.deep_mints, require_key=not offline)
         self.lab: dict = {"holdout": {"count": 0, "status": "UNVALIDATED"}, "sample_count": 0}
@@ -76,6 +76,7 @@ class RadarEngine:
             "curve_observations_verified": 0,
             "curve_http_requests": 0,
         }
+        self.last_hot_batch = 0.0
         self.last_background_batch = 0.0
         self.background_backoff_until = 0.0
         self.background_backoff_level = 0
@@ -579,12 +580,18 @@ class RadarEngine:
             self.tokens[m]
             for m in deep
             if self.tokens[m].graduation is None
-            and now - self.tokens[m].last_curve_attempt >= self.settings.curve_poll_seconds
+            and now - self.tokens[m].last_curve_attempt
+            >= self.rpc.interval(self.settings.curve_poll_seconds, "hot")
         ]
         due_curves.sort(key=lambda t: (t.last_curve_attempt, -t.priority()[0]))
         selected = due_curves[: self.settings.curve_batch_size]
         # Cooldowns do not block the loop waiting on low-priority work.
-        if selected and self.rpc.health["rate_limited_until"] <= now:
+        if (
+            selected
+            and self.rpc.eligible("hot")
+            and now - self.last_hot_batch >= self.rpc.interval(self.settings.curve_poll_seconds, "hot")
+        ):
+            self.last_hot_batch = now
             await self.poll_curves(selected, "hot", self.settings.curve_batch_size)
         deep = self.deep_mints()  # Membership may change while RPC was awaiting a response.
         graduated = [mint for mint in deep if self.tokens[mint].graduation is not None]
@@ -606,12 +613,14 @@ class RadarEngine:
                     and self.tokens[m].curve_progress >= self.settings.security_min_curve_pct
                 )
             )
-            and now - self.tokens[m].last_security_attempt >= self.settings.security_ttl_seconds
+            and now - self.tokens[m].last_security_attempt
+            >= self.rpc.interval(self.settings.security_ttl_seconds, "security")
         ]
         if (
             due
-            and now - self.last_security_scan >= self.settings.security_scan_interval_seconds
-            and self.rpc.health["rate_limited_until"] <= time.time()
+            and now - self.last_security_scan
+            >= self.rpc.interval(self.settings.security_scan_interval_seconds, "security")
+            and self.rpc.eligible("security")
         ):
             token = max(due, key=lambda t: t.priority())
             token.last_security_attempt = self.last_security_scan = now
@@ -650,15 +659,18 @@ class RadarEngine:
             t
             for t in background
             if not t.last_curve_attempt
-            or now - t.last_curve_attempt >= self.settings.curve_background_revisit_seconds
+            or now - t.last_curve_attempt
+            >= self.rpc.interval(self.settings.curve_background_revisit_seconds, "background")
         ]
         waiting.sort(key=lambda t: (t.last_curve_attempt or t.created, t.created, t.mint))
         if (
             waiting
+            and self.rpc.eligible("background")
             and not self.metrics.get("resource_pressure")
             and not self.metrics.get("storage_full")
             and now >= max(self.background_backoff_until, self.rpc.health["rate_limited_until"])
-            and now - self.last_background_batch >= self.settings.curve_background_batch_seconds
+            and now - self.last_background_batch
+            >= self.rpc.interval(self.settings.curve_background_batch_seconds, "background")
         ):
             self.last_background_batch = now
             errors_before = self.rpc.health["errors"]
@@ -860,6 +872,8 @@ class RadarEngine:
         status = (
             "RATE LIMITED"
             if health.get("rate_limited_until", 0) > time.time()
+            else "BACKING OFF"
+            if health.get("backoff_level", 0)
             else "NOT USED YET"
             if not health.get("attempted", False)
             else "CURRENT"
@@ -894,7 +908,8 @@ class RadarEngine:
                 "background_candidates": len(background),
                 "background_candidates_waiting": sum(
                     not t.last_curve_attempt
-                    or now - t.last_curve_attempt >= self.settings.curve_background_revisit_seconds
+                    or now - t.last_curve_attempt
+                    >= self.rpc.interval(self.settings.curve_background_revisit_seconds, "background")
                     for t in background
                 ),
                 "oldest_background_poll_age": round(max(ages, default=0), 1),
@@ -908,7 +923,22 @@ class RadarEngine:
                 "pending_outcomes": len(self.collector.pending),
                 "providers": {
                     "PumpPortal": self.provider_health(self.pump.health),
-                    "Solana RPC": self.provider_health(self.rpc.health),
+                    "Solana RPC": self.provider_health(
+                        {
+                            **self.rpc.health,
+                            "effective_hot_seconds": self.rpc.interval(
+                                self.settings.curve_poll_seconds, "hot"
+                            ),
+                            "effective_background_seconds": self.rpc.interval(
+                                self.settings.curve_background_revisit_seconds, "background"
+                            ),
+                            "effective_security_seconds": self.rpc.interval(
+                                self.settings.security_scan_interval_seconds, "security"
+                            ),
+                            "curve_accounts_per_request": self.rpc.health["curve_accounts"]
+                            / max(1, self.rpc.health["curve_successful_requests"]),
+                        }
+                    ),
                     "DEX Screener": self.provider_health(self.dex.health),
                 },
             },

@@ -50,6 +50,11 @@ class Settings(BaseModel):
     post_grad_wait_seconds: float = Field(default=60, ge=30)
     signal_interval_seconds: float = Field(default=30, ge=10)
     horizons: list[int] = [15, 30, 60, 180, 300, 600, 1800]
+    rpc_backoff_max_level: int = Field(default=4, ge=1, le=8)
+    rpc_interval_max_multiplier: float = Field(default=16, ge=4, le=64)
+    rpc_cooldown_max_seconds: float = Field(default=120, ge=10, le=600)
+    rpc_recovery_seconds: float = Field(default=120, ge=30, le=1800)
+    rpc_recovery_successes: int = Field(default=3, ge=2, le=50)
     curve_poll_seconds: float = Field(default=30, ge=10)
     curve_batch_size: int = Field(default=25, ge=1, le=50)
     curve_background_revisit_seconds: float = Field(default=180, ge=60)

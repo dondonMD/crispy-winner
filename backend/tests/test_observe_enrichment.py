@@ -43,12 +43,13 @@ async def test_batch_cache_unknown_and_completion(complete):
 
     rpc = SolanaProvider(httpx.AsyncClient(transport=httpx.MockTransport(handle)))
     mints = [str(Pubkey.new_unique()) for _ in range(3)]
-    result = await rpc.curve_progress_batch(mints, 2)
+    result = await rpc.curve_progress_batch([mints[0], mints[0], *mints[1:]], 2)
     assert len(result) == 2
     assert result[mints[0]]["curve_progress"] == (100 if complete else 90)
     assert result[mints[1]]["curve_progress"] is None
     await rpc.curve_progress_batch(mints, 2)
     assert [len(c["params"][0]) for c in calls] == [3, 2]
+    assert rpc.health["curve_accounts"] / rpc.health["curve_successful_requests"] == 2
     assert all(c["method"] == "getMultipleAccounts" for c in calls)
     assert RadarEngine.provider_health(rpc.health)["status"] == "CURRENT"
     await rpc.close()

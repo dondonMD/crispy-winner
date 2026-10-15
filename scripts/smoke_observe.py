@@ -26,8 +26,10 @@ async def main(seconds=65, max_deep=25):
         states = set()
         background_observations: OrderedDict[str, int] = OrderedDict()
         curve_events = {"hot": 0, "background": 0}
-        scan_counts = {"security_attempts": 0, "security_outside_hot": 0}
+        scan_counts = {"security_attempts": 0, "security_completed": 0, "security_outside_hot": 0}
         peaks = {"rss_mb": 0.0, "queue_size": 0, "active": 0, "hot": 0, "background": 0}
+        pressure_changes = []
+        previous_level = -1
         original_inspect = engine.rpc.inspect
         original = engine.rpc.curve_progress_batch
         original_process = engine.process
@@ -58,16 +60,23 @@ async def main(seconds=65, max_deep=25):
         async def inspected(mint, creator="", known_accounts=None):
             scan_counts["security_attempts"] += 1
             scan_counts["security_outside_hot"] += mint not in engine.deep_mints()
-            return await original_inspect(mint, creator, known_accounts)
+            report = await original_inspect(mint, creator, known_accounts)
+            scan_counts["security_completed"] += 1
+            return report
 
         engine.rpc.inspect = inspected
         engine.rpc.curve_progress_batch = counted
         engine.process = counted_process
+        initial_db_bytes = engine.db.size()
         start = time.monotonic()
         await engine.start()
         try:
             while time.monotonic() - start < seconds:
                 await asyncio.sleep(min(1, max(0, seconds - (time.monotonic() - start))))
+                level = engine.rpc.health["backoff_level"]
+                if level != previous_level:
+                    pressure_changes.append({"seconds": round(time.monotonic() - start, 1), "level": level})
+                    previous_level = level
                 peaks["rss_mb"] = max(peaks["rss_mb"], engine.metrics.get("rss_mb", 0))
                 peaks["queue_size"] = max(peaks["queue_size"], len(engine.queue.heap))
                 peaks["active"] = max(peaks["active"], len(engine.tokens))
@@ -92,6 +101,12 @@ async def main(seconds=65, max_deep=25):
                 "active_candidates": len(engine.tokens),
                 "deep_candidates": len(engine.deep_mints()),
                 "rss_mb": snap["health"]["rss_mb"],
+                "cpu_pct": snap["health"]["cpu_pct"],
+                "db_mb": snap["health"]["db_mb"],
+                "db_growth_mb_per_hour": round(
+                    (engine.db.size() - initial_db_bytes) / 1024**2 * 3600 / elapsed, 2
+                ),
+                "adaptive_backoff_changes": pressure_changes,
                 "peak_samples": peaks,
                 "background_candidates": snap["health"]["background_candidates"],
                 "background_candidates_waiting": snap["health"]["background_candidates_waiting"],
