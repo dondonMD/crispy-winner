@@ -83,3 +83,7 @@ results, without SQL scans or extra RPC. Manual positions do not alter scanner a
 priority. Opportunity and Manual Positions are additional React pages, not replacements for
 Companion, Entry Candidates, paper research or System Health. See
 [Opportunity Intelligence](opportunity-intelligence.md) for exact heuristics and limitations.
+
+## Provider-independent discovery
+
+Discovery providers conform to a shared health/run interface and submit ordinary MarketEvents. Standard Solana WSS Pump create/migration logs feed the existing bounded queue; optional PumpPortal uses the same path. Cross-source create deduplication happens before token mutation. Either connected discovery source satisfies the existing discovery-health gate; absence of all sources reports degraded health. No classification/threshold changes or HTTP discovery enrichment. See [provider design and limitations](providers/onchain-discovery.md).

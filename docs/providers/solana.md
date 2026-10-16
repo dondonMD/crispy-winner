@@ -6,7 +6,7 @@ Purpose: Mint authorities, extensions and largest holders
 
 Official documentation: https://solana.com/docs/rpc/http
 
-Endpoints/features: getAccountInfo, getTokenSupply, getTokenLargestAccounts, getMultipleAccounts, getSignaturesForAddress, getTransaction; logsSubscribe fallback research https://solana.com/docs/rpc/websocket
+Endpoints/features: getAccountInfo, getTokenSupply, getTokenLargestAccounts, getMultipleAccounts, getSignaturesForAddress, getTransaction; logsSubscribe direct discovery through SOLANA_WS_URL (see [implementation](onchain-discovery.md))
 
 Authentication / free vs paid: Public RPC free with service limits; custom RPC optional.
 

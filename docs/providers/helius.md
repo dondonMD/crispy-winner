@@ -13,3 +13,7 @@ Authentication / free vs paid: Optional key in private .env. Free/paid plan vari
 Rate limits: Same local limiter as RPC; provider plan quotas apply.
 
 Limitations / fallback: No separate SDK or paid enhanced service dependency. Public RPC is baseline.
+
+## Standard WSS discovery
+
+SOLANA_WS_URL supports the standard mainnet Helius WSS endpoint with a privately supplied key. Only logsSubscribe is used, with no enhanced transaction subscriptions or paid trade flow. Provider plan quotas still apply. See [configuration](onchain-discovery.md) and [official standard WSS methods](https://www.helius.dev/docs/rpc/websocket).

@@ -13,3 +13,7 @@ Authentication / free vs paid: Public docs free. No transaction submission imple
 Rate limits: Not applicable.
 
 Limitations / fallback: Dynamic fees, Token-2022 and create_v2 invalidate older guides. Graduation is evidence from migration, never a guessed market cap threshold.
+
+## Canonical discovery events
+
+The scanner now decodes official CreateEvent and CompletePumpAmmMigrationEvent from standard Solana logs. See [pinned schemas, safeguards and limitations](onchain-discovery.md). No transaction submission exists.

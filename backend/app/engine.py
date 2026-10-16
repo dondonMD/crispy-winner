@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import math
+import os
 import time
 import uuid
 from collections import deque, OrderedDict
@@ -11,6 +12,7 @@ from alembic.config import Config
 from backend.app.companion import companion_view
 from backend.app.config import ROOT
 from backend.app.db import Database
+from backend.app.discovery import DiscoveryProvider, OnchainPumpDiscovery
 from backend.app.domain import Deduplicator, MarketEvent, PriorityBuffer, State, Token, TRANSITIONS
 from backend.app.economics import PositionSizer, TradeCostEstimator, evaluate_candidate
 from backend.app.evaluation import OutcomeCollector, evaluate, strategy_version
@@ -37,6 +39,8 @@ class RadarEngine:
         self.tokens: dict[str, Token] = {}
         self.creators: OrderedDict = OrderedDict()
         self.dedup = Deduplicator()
+        self.launch_dedup = Deduplicator()
+        self.duplicate_discoveries = 0
         self.costs = TradeCostEstimator(settings)
         self.sizer = PositionSizer(settings, self.costs)
         self.paper = PaperAccount(self.db, settings, self.costs)
@@ -61,7 +65,12 @@ class RadarEngine:
         self.rejected_payloads = 0
         self.rpc = SolanaProvider(settings=settings)
         self.dex = DexScreenerProvider()
-        self.pump = PumpPortalProvider(settings, self.submit, self.deep_mints, require_key=not offline)
+        self.pump = PumpPortalProvider(
+            settings, self.submit, self.deep_mints, require_key=not offline,
+            enabled=os.getenv("PUMPPORTAL_ENABLED", "false").lower() == "true",
+        )
+        self.onchain = OnchainPumpDiscovery(self.submit)
+        self.discovery_providers: list[DiscoveryProvider] = [self.onchain, self.pump]
         self.lab: dict = {"holdout": {"count": 0, "status": "UNVALIDATED"}, "sample_count": 0}
         self.approved_evidence = None
         for row in reversed(self.db.rows("evidence", limit=1000)):
@@ -237,11 +246,19 @@ class RadarEngine:
         if not self.metrics.get("storage_full") and not self.db.reserve_event(event.event_id, event.ts):
             self.duplicates += 1
             return False
+        if event.kind == "create":
+            if event.mint in self.tokens or not self.launch_dedup.accept(event.mint) or (
+                not self.metrics.get("storage_full")
+                and not self.db.reserve_event(f"launch:{event.mint}", event.ts)
+            ):
+                self.duplicates += 1
+                self.duplicate_discoveries += 1
+                return False
         context_before = {
             "resource_pressure": self.metrics.get("resource_pressure", False),
             "storage_full": self.metrics.get("storage_full", False),
             "providers_connected": {
-                "pump": self.pump.health["connected"],
+                "pump": self.discovery_connected(),
                 "rpc": self.rpc.health["connected"],
                 "dex": self.dex.health["connected"],
             },
@@ -427,7 +444,7 @@ class RadarEngine:
             )
             token.viability_key = key
         healthy = self.settings.mode == "DEMO" or (
-            self.pump.health["connected"]
+            self.discovery_connected()
             and self.rpc.health["connected"]
             and (token.graduation is None or self.dex.health["connected"])
         )
@@ -499,18 +516,19 @@ class RadarEngine:
         elif token.state == State.ENTRY_CANDIDATE and token.decision["decision"] != "ALLOW_PAPER_ENTRY":
             self.transition(token, State.POST_GRAD_OBSERVATION, "Entry gates no longer met", now)
 
+    def discovery_connected(self):
+        return any(provider.health["connected"] for provider in self.discovery_providers)
+
     async def start(self):
         self.running = True
         self.tasks = [asyncio.create_task(self.run_loop(), name="monitor")]
         if self.settings.mode == "DEMO":
             self.tasks.append(asyncio.create_task(self.run_demo(), name="demo"))
         else:
-            self.tasks.extend(
-                [
-                    asyncio.create_task(self.pump.run(), name="pumpportal"),
-                    asyncio.create_task(self.run_enrichment(), name="enrichment"),
-                ]
-            )
+            self.tasks.append(asyncio.create_task(self.run_enrichment(), name="enrichment"))
+            for name, provider in zip(("onchain-discovery", "pumpportal"), self.discovery_providers):
+                if provider.health["enabled"]:
+                    self.tasks.append(asyncio.create_task(provider.run(), name=name))
 
     async def stop(self):
         self.running = False
@@ -872,7 +890,7 @@ class RadarEngine:
                 evidence=self.approved_evidence,
                 healthy=self.settings.mode == "DEMO"
                 or (
-                    self.pump.health["connected"]
+                    self.discovery_connected()
                     and self.rpc.health["connected"]
                     and (token.graduation is None or self.dex.health["connected"])
                 ),
@@ -975,6 +993,14 @@ class RadarEngine:
 
     @staticmethod
     def provider_health(health):
+        if "enabled" in health:
+            return {**health, "status": (
+                "UNAVAILABLE" if health.get("configuration_error") else
+                "DISABLED" if not health["enabled"] else
+                "CURRENT" if health["connected"] else
+                "DEGRADED" if health.get("attempted") else "DISCONNECTED"
+            ), "connection_age_seconds": max(0, time.time() - health["connected_since"])
+                if health.get("connected_since") and health["connected"] else 0}
         status = (
             "RATE LIMITED"
             if health.get("rate_limited_until", 0) > time.time()
@@ -1010,6 +1036,10 @@ class RadarEngine:
             "alerts": list(self.alerts),
             "health": {
                 **self.metrics,
+                "discovery_available": self.discovery_connected() if self.settings.mode != "DEMO" else False,
+                "discovery_status": "DEMO" if self.settings.mode == "DEMO" else
+                    "CURRENT" if self.discovery_connected() else "UNAVAILABLE",
+                "duplicate_discoveries": self.duplicate_discoveries,
                 "active_candidates": len(tokens),
                 "deep_monitored": len(self.deep_mints()),
                 "deep_subscriptions": len(self.pump.subscribed),
@@ -1032,6 +1062,7 @@ class RadarEngine:
                 "out_of_order": self.out_of_order,
                 "pending_outcomes": len(self.collector.pending),
                 "providers": {
+                    "Onchain discovery": self.provider_health(self.onchain.health),
                     "PumpPortal": self.provider_health(self.pump.health),
                     "Solana RPC": self.provider_health(
                         {

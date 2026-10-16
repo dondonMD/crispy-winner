@@ -1,0 +1,20 @@
+{
+  "label": "SYNTHETIC canonical IDL Borsh fixture; not a real launch",
+  "source": "https://github.com/pump-fun/pump-public-docs/blob/639b87fb45c3adeffa6f7c4a1bf0cb85e392bf22/idl/pump.json",
+  "fields": {
+    "name": "Canonical synthetic token",
+    "symbol": "FIXTURE",
+    "uri": "",
+    "mint": "1thX6LZfHDZZKUs92febYZhYRcXddmzfzF2NvTkPNE",
+    "bonding_curve": "45TbiqKvjAxqy1SYcnqKeeMXspje1h92B37JFy4gcySk",
+    "user": "4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw",
+    "creator": "4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw",
+    "timestamp": 1000,
+    "pool": "4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw"
+  },
+  "signature": "1GMkH3brNXiNNs1tiFZHu4yZSRrzJwxi5wB9bHFtMinfCXNnR1adh8Vo8NTheK4evneedH4qmvjeqcBBNAefgS",
+  "events": {
+    "CompletePumpAmmMigrationEvent": "velduVyU6pQBAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fIAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALbd1jeLYa8YfxIsYeeBXc5sTin8DQpki1s54MOp2PX3oAwAAAAAAAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+    "CreateEvent": "G3KpTd7rY3YZAAAAQ2Fub25pY2FsIHN5bnRoZXRpYyB0b2tlbgcAAABGSVhUVVJFAAAAAAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fLbd1jeLYa8YfxIsYeeBXc5sTin8DQpki1s54MOp2PX0BAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fIAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8g6AMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gAAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fIAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  }
+}

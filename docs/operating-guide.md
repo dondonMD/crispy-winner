@@ -4,7 +4,7 @@ Start DEMO to inspect all twelve scenario families offline. SIMULATED DATA is pr
 
 OBSERVE is the default: outbound public APIs only, no wallet. The Radar prioritizes candidates rather than every chain launch. Open a token for risk reasons, individual costs and charts. Unknown/stale information is visible. System Health includes provider connectivity, rate-limit state in the API, RAM/CPU, queue drops and storage warnings.
 
-For optional trade observations, set PUMPPORTAL_API_KEY privately and trade_stream_enabled: true in YAML, after reviewing provider charges. This is a data-provider credential; no wallet secret is requested by this application. Never paste keys into a tracked file. You can instead supply SOLANA_RPC_URL for an optional Helius/custom standard RPC endpoint.
+For optional trade observations, explicitly enable PUMPPORTAL_ENABLED=true and set PUMPPORTAL_API_KEY privately and trade_stream_enabled: true in YAML, after reviewing provider charges. This is a data-provider credential; no wallet secret is requested by this application. Never paste keys into a tracked file. You can instead supply SOLANA_RPC_URL for an optional Helius/custom standard RPC endpoint.
 
 PAPER uses real data and the durable $20 ledger. It will not force trades. Use evaluate before interpreting scores. A strategy must have sufficiently many complete first-eligible signal outcomes and positive later validation/holdout evidence. `freeze-evidence` explicitly records the current historical result for that strategy version, then restart to load it. Read methodology limitations first. This is research approval for simulated entries, not permission to trade real money.
 
@@ -133,3 +133,7 @@ verification run `python scripts/verify_intelligence.py`; it checks the examples
 250-candidate, 8,000-point synthetic load without provider requests. See
 [Opportunity methodology and limitations](opportunity-intelligence.md) for exact rules, storage,
 research horizons and the boundary separating this workflow from the strict strategy.
+
+## Configure launch discovery
+
+Set SOLANA_WS_URL privately to a standard mainnet Solana WSS endpoint, and SOLANA_RPC_URL to its HTTP endpoint. Helius standard endpoints are supported without enhanced subscriptions. PumpPortal defaults disabled; PUMPPORTAL_ENABLED=true explicitly opts into that optional source. Keep trade_stream_enabled=false. Without configured/connected discovery, the application starts safely but reports unavailable/degraded and cannot discover launches. Inspect Onchain discovery in System Health: connection, messages, decoded creates, ignored/decode errors, duplicates, reconnects and connection age. Discovery makes no HTTP calls. Existing adaptive lifecycle polling remains bounded. See [setup and decoding reference](providers/onchain-discovery.md).

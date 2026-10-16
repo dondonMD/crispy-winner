@@ -141,6 +141,8 @@ async def main(seconds=65, max_deep=25):
                 "queue_size": len(engine.queue.heap),
                 "dropped_events": engine.queue.dropped,
                 "entry_candidates": sum(t.state.value == "ENTRY_CANDIDATE" for t in engine.tokens.values()),
+                "discovery_status": snap["health"]["discovery_status"],
+                "duplicate_discoveries": engine.duplicate_discoveries,
                 "providers": snap["health"]["providers"],
                 "observed_states": sorted(states),
                 "curve_progress": [

@@ -61,3 +61,7 @@ bias and is not a population sample. Gross provider-price excursions are descrip
 be unknown and no approved evidence is created automatically. Manual journal records are external
 self-reports, not reconciled fills. The local cash setting is not an automatically maintained ledger.
 Research retention and the existing database cap can limit future coverage; monitor storage growth.
+
+## Discovery availability
+
+PumpPortal is optional and disabled by default. Configure SOLANA_WS_URL for standard Solana Pump log discovery. Without a connected source, no real launches can be observed and health reports unavailable. Supported canonical logs only: no HTTP fallback, outage backfill or guaranteed complete coverage. Creation metadata does not verify security or imply price. Missing migration logs do not imply graduation. Provider quotas and network restrictions still apply. See [on-chain discovery](providers/onchain-discovery.md).

@@ -52,16 +52,19 @@ Set `RADAR_MODE` before running (`$env:RADAR_MODE='PAPER'` on Windows). `RADAR_C
 
 ## Providers and cost
 
+Configure `SOLANA_WS_URL` privately for direct standard Solana launch discovery and `SOLANA_RPC_URL` for HTTP monitoring. Without a connected discovery source, health reports unavailable/degraded; no launches are fabricated. PumpPortal is optional and defaults disabled. See [provider setup, pinned IDL and coverage limits](docs/providers/onchain-discovery.md).
+
 | Provider | Default role | Cost / access |
 |---|---|---|
-| PumpPortal | New launch and migration WebSocket | Free streams verified without key; one connection |
+| Standard Solana WSS | Pump create/migration discovery via logsSubscribe | Configure SOLANA_WS_URL; one connection; no HTTP enrichment |
+| PumpPortal | Optional launch/migration alternative | Disabled unless PUMPPORTAL_ENABLED=true; availability varies |
 | PumpPortal optional trades | Bounded wallet-level candidate trades | Opt-in API key; funded provider account; docs currently 0.01 SOL/10,000 events |
 | Solana public RPC | Batched pre-grad curve progress; selective authorities, Token-2022, holders, creator balances, pool/curve verification | Free, throttled; custom URL optional |
 | DEX Screener | Batched post-grad USD price/liquidity | Public/free; 30 addresses per batch; local TTL/limiter |
-| Helius | Optional replacement standard RPC URL | Provider plan/key; no premium streaming dependency |
+| Helius | Optional standard HTTP + WSS endpoints | Provider plan/key; no premium streaming dependency |
 | Jupiter | Evaluated, not used in v1 | No requests or execution integration |
 
-Detailed verified docs: [providers](docs/providers), [research](docs/research.md). No funded trade-stream key was supplied during development. **Free sources cannot establish independent buyer flow**; the system waits rather than inventing it. Enable metered subscriptions only knowingly using `trade_stream_enabled: true` and private `PUMPPORTAL_API_KEY`. No provider wallet key/seed is stored here.
+Detailed verified docs: [providers](docs/providers), [research](docs/research.md). No funded trade-stream key was supplied during development. **Free sources cannot establish independent buyer flow**; the system waits rather than inventing it. Enable metered subscriptions only knowingly using `PUMPPORTAL_ENABLED=true`, `trade_stream_enabled: true` and private `PUMPPORTAL_API_KEY`. No provider wallet key/seed is stored here.
 
 Free OBSERVE polls derived curve PDAs using `getMultipleAccounts` and a cached global baseline.
 The hot set (default 25) polls about every 30 seconds; remaining active pre-grad candidates

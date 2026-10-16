@@ -406,9 +406,10 @@ class DexScreenerProvider(HttpProvider):
 
 
 class PumpPortalProvider:
-    def __init__(self, settings, submit, candidates, require_key=True):
+    def __init__(self, settings, submit, candidates, require_key=True, enabled=True):
         self.settings, self.submit, self.candidates = settings, submit, candidates
         self.health: dict[str, Any] = {
+            "enabled": enabled,
             "attempted": False,
             "last_attempt": 0,
             "requests": 0,
@@ -421,7 +422,7 @@ class PumpPortalProvider:
             "estimated_metered_sol": 0,
         }
         self.key = os.getenv("PUMPPORTAL_API_KEY", "")
-        if require_key and settings.trade_stream_enabled and not self.key:
+        if enabled and require_key and settings.trade_stream_enabled and not self.key:
             raise ValueError("Trade stream explicitly enabled but PUMPPORTAL_API_KEY missing")
         self.subscribed = set()
 
@@ -477,6 +478,8 @@ class PumpPortalProvider:
         )
 
     async def run(self):
+        if not self.health["enabled"]:
+            return
         attempt = 0
         while True:
             try:

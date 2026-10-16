@@ -100,7 +100,9 @@ def create_app(settings=None, db_path=None):
     async def health():
         e = app.state.engine
         return {
-            "status": "degraded" if e.metrics.get("resource_pressure") else "ok",
+            "status": "degraded" if e.metrics.get("resource_pressure") or (
+                e.settings.mode != "DEMO" and not e.discovery_connected()
+            ) else "ok",
             "mode": e.settings.mode,
             "session": e.session,
             "running": e.running,
