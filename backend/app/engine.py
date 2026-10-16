@@ -78,6 +78,7 @@ class RadarEngine:
         }
         self.last_hot_batch = 0.0
         self.last_background_batch = 0.0
+        self.expiry_metrics = {"inactive_expirations": 0, "expiry_deferred_for_poll": 0}
         self.background_backoff_until = 0.0
         self.background_backoff_level = 0
         self.rpc_errors_seen = 0
@@ -522,6 +523,74 @@ class RadarEngine:
             if t.mint not in hot and t.graduation is None and t.state not in [State.REJECTED, State.EXPIRED]
         ]
 
+    def candidate_expiry_deadline(self, token, hot=None, background_rank=None):
+        """Current scheduling allowance, capped relative to last activity, never to now."""
+        activity = token.last_event or token.created
+        baseline = activity + self.settings.candidate_inactivity_seconds
+        if (
+            self.settings.mode == "DEMO"
+            or token.graduation is not None
+            or token.state in [State.REJECTED, State.EXPIRED]
+        ):
+            return baseline
+        hot = set(self.deep_mints()) if hot is None else hot
+        tier = "hot" if token.mint in hot else "background"
+        interval = self.rpc.interval(
+            self.settings.curve_poll_seconds
+            if tier == "hot"
+            else self.settings.curve_background_revisit_seconds,
+            tier,
+        )
+        eligible = max(self.rpc.health["rate_limited_until"], self.rpc.health["next_eligible_rpc"])
+        opportunity = max((token.last_curve_attempt or token.created) + interval, eligible)
+        if tier == "hot":
+            opportunity = max(opportunity, self.last_hot_batch + interval)
+        else:
+            cadence = self.rpc.interval(self.settings.curve_background_batch_seconds, tier)
+            if self.rpc.health["backoff_level"] >= 3:
+                eligible = max(eligible, self.rpc.health["next_eligible_rpc"] + self.rpc.interval(30, tier))
+            # Same oldest-first order as the scheduler. Account for bounded batches ahead;
+            # recent arrivals cannot keep moving an older token's slot to the back.
+            if background_rank is None:
+                background_rank = self.background_expiry_ranks(hot)
+            ahead = background_rank.get(token.mint, 0)
+            opportunity = max(
+                opportunity, eligible, self.background_backoff_until, self.last_background_batch + cadence
+            )
+            opportunity += (ahead // self.settings.curve_background_batch_size) * cadence
+        return min(
+            activity + self.settings.candidate_expiry_max_seconds,
+            max(baseline, opportunity + self.settings.candidate_expiry_grace_seconds),
+        )
+
+    def background_expiry_ranks(self, hot):
+        ordered = sorted(
+            self.background_tokens(hot), key=lambda t: (t.last_curve_attempt or t.created, t.created, t.mint)
+        )
+        return {token.mint: rank for rank, token in enumerate(ordered)}
+
+    def expire_inactive_candidates(self, now):
+        hot = set(self.deep_mints())
+        background_rank = self.background_expiry_ranks(hot)
+        deferred = 0
+        for token in list(self.tokens.values()):
+            if (
+                token.mint in self.paper.state["positions"]
+                or self.paper.state["pending"].get(token.mint, {}).get("action") == "entry"
+                or State.EXPIRED not in TRANSITIONS[token.state]
+            ):
+                continue
+            if now <= (token.last_event or token.created) + self.settings.candidate_inactivity_seconds:
+                continue
+            if now <= self.candidate_expiry_deadline(token, hot, background_rank):
+                deferred += 1
+                continue
+            self.transition(token, State.EXPIRED, "Inactive candidate expired", now)
+            del self.tokens[token.mint]
+            self.expiry_metrics["inactive_expirations"] += 1
+        # Current gauge, not four duplicate deferrals per second per candidate.
+        self.expiry_metrics["expiry_deferred_for_poll"] = deferred
+
     def background_health_backoff(self, now):
         errors = self.rpc.health["errors"]
         if errors > self.rpc_errors_seen:
@@ -730,12 +799,7 @@ class RadarEngine:
                 for token in list(self.tokens.values()):
                     if now - token.last_analysis >= 1:
                         self.analyse(token, now)
-                    if now - token.last_event > 300 and token.mint not in self.paper.state["positions"]:
-                        from backend.app.domain import TRANSITIONS
-
-                        if State.EXPIRED in TRANSITIONS[token.state]:
-                            self.transition(token, State.EXPIRED, "Inactive candidate expired", now)
-                        del self.tokens[token.mint]
+                self.expire_inactive_candidates(now)
                 self.paper.expire_pending(now)
                 if not self.metrics.get("storage_full"):
                     self.collector.expire(now)
@@ -905,6 +969,7 @@ class RadarEngine:
                 "deep_monitored": len(self.deep_mints()),
                 "deep_subscriptions": len(self.pump.subscribed),
                 **self.curve_metrics,
+                **self.expiry_metrics,
                 "background_candidates": len(background),
                 "background_candidates_waiting": sum(
                     not t.last_curve_attempt

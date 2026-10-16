@@ -30,6 +30,7 @@ async def main(seconds=65, max_deep=25):
         peaks = {"rss_mb": 0.0, "queue_size": 0, "active": 0, "hot": 0, "background": 0}
         pressure_changes = []
         previous_level = -1
+        peak_expiry_deferred = 0
         original_inspect = engine.rpc.inspect
         original = engine.rpc.curve_progress_batch
         original_process = engine.process
@@ -73,6 +74,9 @@ async def main(seconds=65, max_deep=25):
         try:
             while time.monotonic() - start < seconds:
                 await asyncio.sleep(min(1, max(0, seconds - (time.monotonic() - start))))
+                peak_expiry_deferred = max(
+                    peak_expiry_deferred, engine.expiry_metrics["expiry_deferred_for_poll"]
+                )
                 level = engine.rpc.health["backoff_level"]
                 if level != previous_level:
                     pressure_changes.append({"seconds": round(time.monotonic() - start, 1), "level": level})
@@ -113,6 +117,8 @@ async def main(seconds=65, max_deep=25):
                 "oldest_background_poll_age": snap["health"]["oldest_background_poll_age"],
                 "background_backoff_until": snap["health"]["background_backoff_until"],
                 **engine.curve_metrics,
+                **engine.expiry_metrics,
+                "peak_expiry_deferred_for_poll": peak_expiry_deferred,
                 "curve_accounts_per_http_request": round(
                     engine.curve_metrics["curve_accounts_checked"]
                     / max(1, engine.curve_metrics["curve_http_requests"]),

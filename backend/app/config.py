@@ -55,6 +55,9 @@ class Settings(BaseModel):
     rpc_cooldown_max_seconds: float = Field(default=120, ge=10, le=600)
     rpc_recovery_seconds: float = Field(default=120, ge=30, le=1800)
     rpc_recovery_successes: int = Field(default=3, ge=2, le=50)
+    candidate_inactivity_seconds: float = Field(default=300, ge=60, le=3600)
+    candidate_expiry_grace_seconds: float = Field(default=30, ge=5, le=120)
+    candidate_expiry_max_seconds: float = Field(default=7200, ge=300, le=86400)
     curve_poll_seconds: float = Field(default=30, ge=10)
     curve_batch_size: int = Field(default=25, ge=1, le=50)
     curve_background_revisit_seconds: float = Field(default=180, ge=60)
@@ -70,6 +73,8 @@ class Settings(BaseModel):
 
     @model_validator(mode="after")
     def consistent(self):
+        if self.candidate_expiry_max_seconds < self.candidate_inactivity_seconds:
+            raise ValueError("candidate expiry cap must cover base inactivity")
         if not self.lifecycle_maturing_pct < self.lifecycle_near_exit_pct < self.lifecycle_near_pct:
             raise ValueError("lifecycle thresholds must be ordered")
         if self.max_deep > self.max_candidates:
