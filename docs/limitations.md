@@ -45,3 +45,19 @@ Free OBSERVE cannot supply buyer breadth/flow without subscribed trade evidence.
 No FOMO deep-link/API contract is assumed. Copy mint and manual search are the complete workflow. Clipboard permissions may fail, with manual copying available. No wallet, private key, transaction, LLM explanation service, telemetry or trading endpoint is added. Optional watchlist and watched-token notifications are deferred UX work; current backend classification and existing entry notifications take priority.
 
 The current interface depends on existing SSE delivery. Disconnection remains visibly warned; an old screen must not be treated as current evidence. Data acquisition remains bounded and provider-dependent. Four DEMO UI fixtures include explicitly synthetic historical evidence solely to exercise presentation; they are never accepted as real evidence or passed to paper trading/Strategy Lab. DOM tests cover behavior, but visual layout still needs human browser review.
+
+## Opportunity/manual intelligence
+
+Opportunity priority and exit context are unvalidated research heuristics, not profitable-edge
+claims or execution instructions. No automatic pre-graduation USD market cap, calibrated entry
+zone or maximum-chase price is available. Manual observations are user-reported and expire visibly;
+market-cap changes are proxies, never P&L. Current liquidity and comparable prices are required
+for after-cost estimates. Missing flow remains unavailable. An evicted manual-position mint gets
+no additional polling and may remain DATA STALE. Curve history rewarms after restart.
+
+Prospective outcomes have explicit gaps and bounded pending capacity; provider sampling is
+irregular and selectively observes a lifecycle-ranked funnel. Such data has selection/coverage
+bias and is not a population sample. Gross provider-price excursions are descriptive; costs may
+be unknown and no approved evidence is created automatically. Manual journal records are external
+self-reports, not reconciled fills. The local cash setting is not an automatically maintained ledger.
+Research retention and the existing database cap can limit future coverage; monitor storage growth.

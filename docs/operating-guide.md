@@ -112,3 +112,24 @@ Curve current and session peak are distinct; retreat is descriptive percentage p
 DEMO shows an unmistakable banner and a separate four-action synthetic showcase excluded from action counts and strategy evidence. `python scripts/smoke_companion.py` verifies it using a temporary database. In free OBSERVE, zero entries is a valid outcome; historical edge remains unvalidated. Notifications require an explicit browser-alert click; entry alerts require a current backend companion entry decision.
 
 Manual visual checks: visit the page at desktop and narrow widths; filter WAIT/NEAR GRADUATION, inspect current vs peak, copy a full mint, and open intelligence. In DEMO, scroll to the labelled synthetic cards to see all four badge texts. Watch SSE replace current action when evidence changes.
+
+## Opportunity and manual positions
+
+Open **Opportunity** for the ranked top-20 research shortlist. These are **UNVALIDATED RESEARCH
+SIGNALS**, not core Entry Candidates or probabilities of profit. Inspect progression, missing
+security/flow/market evidence and entry context before acting. Copy the mint and independently
+inspect it in FOMO; CRISPY WINNER never interacts with that interface.
+
+Token detail supports timestamped **MANUAL USER OBSERVATION** price/cap input, a separate manual
+cost estimate and an explicitly confirmed external-entry journal form. Manual context expires
+visibly after 120 seconds by default. Set available manual cash on **Manual Positions**; it is a
+local user setting, not a wallet balance, and the $20 paper account is unchanged. Mark and close
+positions manually; closure records no transaction. Review stale evidence and explained exit
+states rather than treating warnings as guaranteed sell instructions. There is no automatic entry
+zone without target evidence. Research defaults are in `config/intelligence.yaml`.
+
+DEMO includes isolated synthetic Opportunity/exit examples, labelled prominently. For offline
+verification run `python scripts/verify_intelligence.py`; it checks the examples and measures a
+250-candidate, 8,000-point synthetic load without provider requests. See
+[Opportunity methodology and limitations](opportunity-intelligence.md) for exact rules, storage,
+research horizons and the boundary separating this workflow from the strict strategy.

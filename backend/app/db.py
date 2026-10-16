@@ -31,6 +31,22 @@ class EventIdentity(Base):
     ts: Mapped[float] = mapped_column(Float, index=True)
 
 
+class ManualPositionRow(Base):
+    __tablename__ = "manual_positions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mode: Mapped[str] = mapped_column(String(20), index=True)
+    status: Mapped[str] = mapped_column(String(10), index=True)
+    updated_at: Mapped[float] = mapped_column(Float, default=0)
+    __table_args__ = (Index("ix_manual_recent", "mode", "status", "updated_at"),)
+    payload: Mapped[str] = mapped_column(Text)
+
+
+class OpportunityPendingRow(Base):
+    __tablename__ = "opportunity_pending"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    payload: Mapped[str] = mapped_column(Text)
+
+
 class Database:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -106,6 +122,10 @@ class Database:
     def retention(self, settings, now=None):
         now = time.time() if now is None else now
         groups = {
+            "opportunity_signal": settings.outcome_retention_days * 86400,
+            "opportunity_outcome": settings.outcome_retention_days * 86400,
+            "manual_position_mark": settings.snapshot_retention_days * 86400,
+            "manual_market_context": settings.snapshot_retention_days * 86400,
             "event": settings.raw_retention_hours * 3600,
             "snapshot": settings.snapshot_retention_days * 86400,
             "security": settings.snapshot_retention_days * 86400,

@@ -128,6 +128,10 @@ class Token:
     last_trade: float = 0
     last_price: float = 0
     last_liquidity: float = 0
+    last_market_cap: float = 0
+    market_source: str = ""
+    cap_source: str = ""
+    curve_history: deque = field(default_factory=lambda: deque(maxlen=32))
     price: float | None = None
     liquidity: float | None = None
     market_cap: float | None = None

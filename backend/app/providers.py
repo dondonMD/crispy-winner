@@ -393,7 +393,11 @@ class DexScreenerProvider(HttpProvider):
                             market_cap=pair.get("marketCap") or pair.get("fdv"),
                             currency="USD",
                             pair=pair["pairAddress"],
-                            evidence={"txns": pair.get("txns", {}), "venue": "pumpswap"},
+                            evidence={
+                                "txns": pair.get("txns", {}),
+                                "venue": "pumpswap",
+                                "market_cap_kind": "MARKET_CAP" if pair.get("marketCap") else "FDV",
+                            },
                         )
                     )
                 except (ValidationError, KeyError, TypeError, ValueError):

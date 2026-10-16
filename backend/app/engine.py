@@ -18,6 +18,7 @@ from backend.app.features import calculate_features, score_token
 from backend.app.paper import PaperAccount
 from backend.app.providers import DexScreenerProvider, PumpPortalProvider, SolanaProvider
 from backend.app.resources import ResourceMonitor
+from backend.app.intelligence import Intelligence
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ log = logging.getLogger(__name__)
 class RadarEngine:
     def __init__(self, settings, db_path=None, offline=False):
         self.settings = settings
+        self.offline = offline
         self.session = str(uuid.uuid4())
         self.db = Database(db_path or ROOT / "data" / ("demo.db" if settings.mode == "DEMO" else "radar.db"))
         cfg = Config(str(ROOT / "backend/alembic.ini"))
@@ -86,6 +88,7 @@ class RadarEngine:
         self.last_lab = 0.0
         self.last_maintenance = 0.0
         self.restore()
+        self.intelligence = Intelligence(self)
         self.db.add(
             "session_context",
             {
@@ -291,6 +294,7 @@ class RadarEngine:
         if event.price is not None:
             token.price = event.price
             token.last_price = event.ts
+            token.market_source = event.source if event.currency == "USD" else ""
             token.source_prices[event.source] = (event.ts, event.price)
             recent = [v for v in token.source_prices.values() if 0 <= event.ts - v[0] <= 20]
             token.disagreement = (
@@ -304,10 +308,27 @@ class RadarEngine:
             token.last_liquidity = event.ts
         if event.market_cap is not None:
             token.market_cap = event.market_cap
+            token.last_market_cap = event.ts
+            token.cap_source = (
+                event.source
+                if event.currency == "USD" and event.evidence.get("market_cap_kind") == "MARKET_CAP"
+                else ""
+            )
         if event.curve_progress is not None:
             token.curve_progress = event.curve_progress
         if token.curve_progress is not None:
             token.curve_peak_progress = max(token.curve_peak_progress or 0, token.curve_progress)
+        # Compact research history only from already acquired, verified lifecycle observations.
+        if (
+            event.kind in ["curve", "security"]
+            and event.evidence.get("data_quality") == "VERIFIED"
+            and isinstance(event.evidence.get("curve_progress"), (int, float))
+            and not isinstance(event.evidence.get("curve_progress"), bool)
+            and math.isfinite(event.evidence["curve_progress"])
+            and 0 <= event.evidence["curve_progress"] <= 100
+            and (not token.curve_history or event.ts > token.curve_history[-1][0])
+        ):
+            token.curve_history.append((event.ts, token.curve_progress))
         if (
             event.kind == "migration"
             and token.graduation is None
@@ -367,7 +388,10 @@ class RadarEngine:
                 {
                     "ts": event.ts,
                     "price": event.price,
-                    "market_cap": token.market_cap,
+                    "market_cap": token.market_cap
+                    if token.cap_source == "DEX Screener"
+                    and 0 <= event.ts - token.last_market_cap <= self.settings.max_data_age_seconds
+                    else None,
                     "maturity": token.scores["maturity"],
                     "momentum": token.scores["momentum"],
                     "buyers": token.features["180"]["estimated_independent_buyers"]
@@ -378,6 +402,7 @@ class RadarEngine:
                     else None,
                 }
             )
+        self.intelligence.observe(token, event.ts)
         self.processed += 1
         return True
 
@@ -800,6 +825,7 @@ class RadarEngine:
                     if now - token.last_analysis >= 1:
                         self.analyse(token, now)
                 self.expire_inactive_candidates(now)
+                self.intelligence.refresh(now)
                 self.paper.expire_pending(now)
                 if not self.metrics.get("storage_full"):
                     self.collector.expire(now)
@@ -861,7 +887,15 @@ class RadarEngine:
             "creator": token.creator,
             "graduation": token.graduation,
             "price": token.price,
-            "market_cap": token.market_cap,
+            "market_cap": token.market_cap
+            if token.cap_source == "DEX Screener"
+            and 0 <= now - token.last_market_cap <= self.settings.max_data_age_seconds
+            else None,
+            "market_cap_observed_at": token.last_market_cap or None,
+            "market_cap_quality": "CURRENT"
+            if token.cap_source == "DEX Screener"
+            and 0 <= now - token.last_market_cap <= self.settings.max_data_age_seconds
+            else "UNAVAILABLE / STALE",
             "liquidity": token.liquidity,
             "initial_drawdown_pct": 100 * (1 - token.grad_low / token.grad_high)
             if token.grad_high and math.isfinite(token.grad_low)
@@ -891,6 +925,7 @@ class RadarEngine:
             "curve_progress": token.curve_progress,
         }
         if detail:
+            view["opportunity"] = self.intelligence.results.get(token.mint)
             view["creator_profile"] = (
                 self.creators[token.creator].report(token) if token.creator in self.creators else None
             )
@@ -898,6 +933,13 @@ class RadarEngine:
             view["transitions"] = self.db.rows("transition", mint=token.mint, limit=100)
             view["signals"] = self.db.rows("signal", mint=token.mint, limit=30)
         return view
+
+    def intelligence_examples(self, now):
+        if self.settings.mode != "DEMO":
+            return {"opportunities": [], "positions": []}
+        from backend.app.intelligence_demo import examples
+
+        return examples(self.settings, self.intelligence.cfg, now)
 
     def companion_examples(self, now):
         if self.settings.mode != "DEMO":
@@ -960,6 +1002,9 @@ class RadarEngine:
             "timestamp": now,
             "tokens": [self.token_view(t, now) for t in tokens],
             "companion_examples": self.companion_examples(now),
+            "opportunities": self.intelligence.opportunities(),
+            "manual": self.intelligence.manual_view(),
+            "intelligence_examples": self.intelligence_examples(now),
             "paper": self.paper.summary(self.tokens),
             "lab": self.lab,
             "alerts": list(self.alerts),

@@ -67,3 +67,19 @@ background backoff deadline. These scheduler counters reset each process session
 React cards show action text, attention, current/peak curve, evidence quality, blockers and existing economics. Local clipboard access is the only new browser integration. Development-only DOM tests use [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) and [Vitest's jsdom environment](https://vitest.dev/guide/environment.html); production retains React/CSS without a new framework.
 
 DEMO-only `companion_examples()` creates four synthetic core-evaluated UI snapshots outside engine.tokens, the outcome collector and paper account. Real snapshots return no examples and never inherit fixture evidence. Bounded active/hot/background monitoring and public RPC backoff are unchanged.
+
+## Opportunity and external manual positions
+
+The scanner now publishes an independent unvalidated research projection. Existing VERIFIED
+curve events append at most 32 compact timestamp/progress pairs per token. Pure Opportunity and
+Exit modules consume these observations; they never call providers, alter lifecycle/core decisions,
+or feed paper entries/approved evidence. An independent research config/version leaves core
+strategy identity unchanged. Manual USD market observations stay outside Token/core evidence.
+
+A local journal uses the same SQLite WAL database, with Alembic 0003 tables for bounded open
+manual-position state and bounded prospective research work. Immutable research/mark/open/close
+records use distinct namespaces. Projections refresh at most once per second; SSE reads cached
+results, without SQL scans or extra RPC. Manual positions do not alter scanner admission or poll
+priority. Opportunity and Manual Positions are additional React pages, not replacements for
+Companion, Entry Candidates, paper research or System Health. See
+[Opportunity Intelligence](opportunity-intelligence.md) for exact heuristics and limitations.

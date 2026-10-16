@@ -98,6 +98,16 @@ async def main(seconds=65, max_deep=25):
                 "elapsed_seconds": round(elapsed, 2),
                 "configured_hot_limit": max_deep,
                 "launches": launch_count,
+                "opportunity_counts": snap["opportunities"]["counts"],
+                "opportunity_evidence_grades": {
+                    grade: sum(o["evidence_grade"] == grade for o in snap["opportunities"]["items"])
+                    for grade in sorted({o["evidence_grade"] for o in snap["opportunities"]["items"]})
+                },
+                "opportunity_trade_unavailable": sum(
+                    o["trade_evidence"] == "UNAVAILABLE" for o in snap["opportunities"]["items"]
+                ),
+                "opportunity_signals": snap["opportunities"]["signals_this_session"],
+                "opportunity_outcomes": snap["opportunities"]["outcomes_this_session"],
                 "curve_account_attempts": curve_attempts,
                 "successful_curve_observations": successes,
                 "rpc_requests": engine.rpc.health["requests"],

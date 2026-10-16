@@ -1,0 +1,13 @@
+# Independent UNVALIDATED research/manual-support settings, never strict strategy gates.
+curve_fresh_seconds: 180
+manual_fresh_seconds: 120
+progression_min_pp: 4
+progression_min_seconds: 60
+pullback_min_pp: 4
+collapse_pp: 25
+profit_retreat_pct: 8
+exit_drawdown_pct: 20
+profit_buffer_pct: 3
+liquidity_retention_fraction: 0.5
+manual_max_open: 3
+horizons: [60, 180, 300, 600, 1800]
