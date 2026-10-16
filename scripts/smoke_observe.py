@@ -187,6 +187,6 @@ if __name__ == "__main__":
         help="Isolated probe hot limit; application defaults remain unchanged",
     )
     args = parser.parse_args()
-    if not 1 <= args.seconds <= 600:
-        parser.error("--seconds must be between 1 and 600")
+    if not 1 <= args.seconds <= 3600:
+        parser.error("--seconds must be between 1 and 3600")
     asyncio.run(main(args.seconds, args.max_deep))
