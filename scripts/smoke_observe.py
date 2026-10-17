@@ -4,6 +4,7 @@ import asyncio
 import argparse
 from collections import Counter, OrderedDict
 import json
+import math
 import sys
 import tempfile
 import time
@@ -39,6 +40,8 @@ async def main(seconds=65, max_deep=25):
         observed_current_examples = []
         clean_candidates: OrderedDict[str, None] = OrderedDict()
         maximum_oldest_trade_age = 0.0
+        current_ranges = {k: {"min": None, "max": None} for k in
+                          ("estimated_independent_buyers", "flow_ratio", "whale_share", "samples")}
         original_inspect = engine.rpc.inspect
         original = engine.rpc.curve_progress_batch
         original_process = engine.process
@@ -81,6 +84,7 @@ async def main(seconds=65, max_deep=25):
         engine.process = counted_process
         initial_db_bytes = engine.db.size()
         start_cpu = time.process_time()
+        start_wall = time.time()
         start = time.monotonic()
         await engine.start()
         try:
@@ -104,6 +108,12 @@ async def main(seconds=65, max_deep=25):
                             clean_candidates.popitem(last=False)
                 current_tokens = [t for t in engine.tokens.values() if engine.trade_status(t, sample_now) == "CURRENT"]
                 maximum_current_candidates = max(maximum_current_candidates, len(current_tokens))
+                for token in current_tokens:
+                    for key, bounds in current_ranges.items():
+                        value = token.features["180"].get(key)
+                        if isinstance(value, (int, float)) and math.isfinite(value):
+                            bounds["min"] = value if bounds["min"] is None else min(value, bounds["min"])
+                            bounds["max"] = value if bounds["max"] is None else max(value, bounds["max"])
                 if current_tokens and first_current_seconds is None:
                     first_current_seconds = round(time.monotonic() - start, 2)
                     observed_current_examples = [
@@ -141,6 +151,9 @@ async def main(seconds=65, max_deep=25):
                 trade_blockers["disconnected"] += not engine.onchain.health["connected"]
                 trade_blockers["pending_recovery"] += engine.recovery.overlaps(token, time.time())
             report = {
+                "current_evidence_ranges": current_ranges,
+                "transport_timing": [{"seconds": round(item["at"] - start_wall, 2), "state": item["state"]}
+                                     for item in engine.onchain.health["transport_transitions"]],
                 "truncation_recovery": engine.recovery.snapshot(),
                 "ordinary_monitoring_rpc_requests": engine.rpc.health["requests"] - engine.rpc.truncation_metrics["requests"],
                 "queue_lag": engine.queue.snapshot(),

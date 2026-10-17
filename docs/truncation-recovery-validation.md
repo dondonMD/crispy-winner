@@ -1,5 +1,8 @@
 # Explicit Pump log-truncation recovery validation
 
+Historical report for `22be0c8`. See [multi-hop recovery follow-up](multihop-recovery-validation.md)
+for the subsequent identity-only mapping and 600-second verification.
+
 Verified 2026-10-17, following `f8c5935d88151a3e32624a79450336bccd4112b6`.
 
 The earlier 243.83-second Helius run had 146 explicit truncations plus two

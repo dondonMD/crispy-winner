@@ -215,6 +215,7 @@ class OnchainPumpDiscovery:
             "http_requests": 0,
             "reconnect_level": 0,
             "subscriptions": 0,
+            "transport_transitions": [],
             "configuration_error": False,
         }
         try:
@@ -224,6 +225,11 @@ class OnchainPumpDiscovery:
         except ValueError:
             self.health["configuration_error"] = True
             self.health["enabled"] = False
+
+    def record_transport_transition(self, state):
+        history = self.health["transport_transitions"]
+        history.append({"at": time.time(), "state": state})
+        del history[:-32]
 
     def record_decode_failure(self, name, exc):
         name = name if name in FAILURE_EVENTS else "unknown"
@@ -484,6 +490,7 @@ class OnchainPumpDiscovery:
                             subscriptions=1,
                             last_success=time.time(),
                         )
+                        self.record_transport_transition("CONNECTED")
                         while True:
                             message = await asyncio.wait_for(ws.recv(), timeout=90)
                             if time.monotonic() - connected_at >= 60:
@@ -502,6 +509,7 @@ class OnchainPumpDiscovery:
                                 self.global_gap("outer_notification")
                                 self.record_decode_failure("notification", DecodeFailure("outer_notification"))
                 except (OSError, websockets.WebSocketException, TimeoutError, ValueError):
+                    self.record_transport_transition("DISCONNECTED")
                     self.global_gap("transport")
                     if self.health["connected_since"]:
                         self.connected_intervals.append((self.health["connected_since"], time.time()))

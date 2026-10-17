@@ -14,6 +14,7 @@ from solders.pubkey import Pubkey
 
 from backend.app.discovery import PUMP_PROGRAM
 from backend.app.domain import Deduplicator
+from backend.app import pump_amm_recovery as multi_hop
 
 SCHEMA = json.loads(Path(__file__).with_name("pump_instructions.json").read_text())
 INSTRUCTIONS = {bytes(i["discriminator"]): i for i in SCHEMA["instructions"]}
@@ -38,7 +39,7 @@ def decode_base58(value):
     return b"\0" * (len(value) - len(value.lstrip("1"))) + number.to_bytes((number.bit_length() + 7) // 8, "big")
 
 
-def transaction_impact(result, signature, slot, tracked):
+def transaction_impact(result, signature, slot, tracked, diagnostics=None):
     """Validate legacy/v0/v1 compiled instruction identities, including complete CPI data."""
     try:
         if result["slot"] != slot or type(result["slot"]) is not int:
@@ -98,7 +99,6 @@ def transaction_impact(result, signature, slot, tracked):
         inner = meta["innerInstructions"]  # null/missing means CPI coverage cannot be established.
         if not isinstance(outer, list) or not isinstance(inner, list) or len(outer) > 256 or len(inner) > len(outer):
             raise ValueError("instruction bounds")
-        instructions = [(i, False) for i in outer]
         groups = set()
         for group in inner:
             index = group["index"]
@@ -107,26 +107,39 @@ def transaction_impact(result, signature, slot, tracked):
             groups.add(index)
             if not isinstance(group["instructions"], list) or len(group["instructions"]) > 1024:
                 raise ValueError("inner bounds")
-            instructions.extend((i, True) for i in group["instructions"])
-        if len(instructions) > 2048:
+        if len(outer) + sum(len(g["instructions"]) for g in inner) > 2048:
             raise ValueError("total instructions")
+        contexts = multi_hop.invocations(outer, inner)
+        calls = []
+        routes = {}
         affected = set()
         unsupported = False
-        for instruction, is_inner in instructions:
+        for identity, context in enumerate(contexts):
+            instruction, is_inner = context.instruction, context.inner
             program = instruction["programIdIndex"]
             accounts = instruction["accounts"]
             if (type(program) is not int or not 0 <= program < len(keys) or not isinstance(accounts, list)
                     or len(accounts) > 256 or any(type(i) is not int or not 0 <= i < len(keys) for i in accounts)):
                 raise ValueError("compiled account index")
-            if keys[program] != PUMP_PROGRAM:
+            if keys[program] not in (PUMP_PROGRAM, multi_hop.PROGRAM):
                 continue
             data = decode_base58(instruction["data"])
+            if keys[program] == multi_hop.PROGRAM:
+                if data[:8] == multi_hop.DISCRIMINATOR:
+                    routes[identity] = multi_hop.route_mints(instruction, keys, data)
+                continue
             if (data[:8] == EVENT_CPI and is_inner and len(accounts) == 1
                     and keys[accounts[0]] == EVENT_AUTHORITY and len(data) >= 16 and data[8:16] in EVENTS):
                 continue  # Canonical Anchor event emission, not a trade invocation.
             definition = INSTRUCTIONS.get(data[:8])
-            if definition is None or definition["name"] == "multi_hop_curve_swap":
+            if definition is None:
+                multi_hop.count(diagnostics, "unsupported_instruction_counts",
+                                subtype="other" if data[:8] == EVENT_CPI else "unknown_discriminator")
                 unsupported = True
+                continue
+            if definition["name"] == "multi_hop_curve_swap":
+                multi_hop.count(diagnostics, "multi_hop_curve_swap_observed")
+                calls.append((identity, data))
                 continue
             required = sum(not a.get("optional", False) for a in definition["accounts"])
             if len(accounts) < required:
@@ -141,8 +154,15 @@ def transaction_impact(result, signature, slot, tracked):
                     raise ValueError("default mint")
                 if tracked(mint):
                     affected.add(mint)
+        if calls:
+            definition = next(i for i in INSTRUCTIONS.values() if i["name"] == "multi_hop_curve_swap")
+            unresolved, curve_mints = multi_hop.resolve(calls, routes, contexts, keys, tracked, definition, diagnostics)
+            unsupported |= unresolved
+            affected.update(curve_mints)
         if unsupported:
             return "UNSUPPORTED_PUMP_TRADE", set()
+        if calls:
+            multi_hop.count(diagnostics, "multi_hop_tracked_affected" if affected else "multi_hop_untracked_confirmed")
         return ("TRACKED_AFFECTED" if affected else "UNTRACKED_CONFIRMED"), affected
     except (ValueError, KeyError, TypeError, IndexError, AttributeError):
         return "MALFORMED", set()
@@ -169,7 +189,8 @@ class TruncationRecovery:
         self.seen = Deduplicator(10000)
         self.health: dict[str, Any] = {"requests": 0, "successful_requests": 0, "errors": 0, "rate_limits": 0,
                        "deduplicated": 0, "peak_pending": 0, "overflow": 0, "global_gaps": 0,
-                       "token_local_gaps": 0, "classifications": dict.fromkeys(CLASSIFICATIONS, 0)}
+                       "token_local_gaps": 0, "classifications": dict.fromkeys(CLASSIFICATIONS, 0),
+                       **multi_hop.diagnostics()}
 
     def submit(self, signature, slot, observed):
         if not self.seen.accept(signature):
@@ -221,7 +242,7 @@ class TruncationRecovery:
         except (RuntimeError, ValueError, OSError):
             result = None
         if result is not None:
-            classification, affected = transaction_impact(result, recovery.signature, recovery.slot, self.tracked)
+            classification, affected = transaction_impact(result, recovery.signature, recovery.slot, self.tracked, self.health)
             self.resolve(recovery, classification, affected)
         elif recovery.attempts >= self.MAX_ATTEMPTS:
             self.resolve(recovery, "TRANSACTION_UNAVAILABLE")

@@ -46,7 +46,7 @@ CURRENT does not mean a token's security/progress is known. DEX normally remains
 until a migrated candidate needs market data. PumpPortal CURRENT describes its live connection.
 
 Run `python scripts/smoke_providers.py`, then `python scripts/smoke_observe.py` for a default 65-second
-read-only run; use `python scripts/smoke_observe.py --seconds 300` to exercise background cadence.
+read-only run; use `python scripts/smoke_observe.py --seconds 600` to exercise background cadence.
 Both use a temporary database and disabled trade subscriptions. Reports under `data/`
 are local ignored artifacts. The run reports discovery, curve attempts/successes, request rate,
 counts, provider health, RSS and actual lifecycle outcomes. It need not witness graduation.
@@ -153,7 +153,7 @@ a quiet/outage window is not evidence of zero buyers. PARTIAL flow cannot satisf
 Companion or core gates. Public RPC security can remain UNKNOWN despite strong
 flow. See [canonical schema and bounds](providers/onchain-discovery.md).
 
-For an isolated live probe use `scripts/smoke_observe.py --seconds 300`. Its report
+For an isolated live probe use `scripts/smoke_observe.py --seconds 600`. Its report
 includes aggregate flow examples only for CURRENT candidates, separate loss
 counts, coverage, resources, actions and unchanged paper cash. Reports in `data/`
 remain ignored local artifacts. No real trade is executed or recommended.
@@ -167,3 +167,11 @@ recovery request/error/429 counts, and queue peak/oldest trade age/stale-while-q
 Recovery shares RPC pressure with monitoring and increases HTTP usage only for explicit
 truncations. A growing queue can still prevent fresh evidence; capacity and the
 20-second limit are unchanged. See [recovery semantics and bounds](providers/onchain-discovery.md#targeted-truncation-recovery).
+
+
+System Health now separates unsupported curve-call / unknown-discriminator / other
+recovery instructions and shows multi-hop calls, associated routes and unresolved /
+ambiguous calls. These are identity-recovery diagnostics, not PumpSwap trade flow.
+The 600-second probe records bounded relative WSS connection timing and CURRENT-only
+aggregate ranges. A route can preserve unrelated candidates only after complete,
+unambiguous canonical mapping; unknown/malformed routes remain fail-closed.

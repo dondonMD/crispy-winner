@@ -214,7 +214,8 @@ Supported identity layouts: buy, buy_exact_sol_in, buy_v2/v3,
 buy_exact_quote_in_v2/v3, sell and sell_v2/v3. The canonical mint account is
 position 2 for legacy instructions and base_mint position 1 for v2/v3.
 Known nontrade instructions are distinguished using the pinned IDL.
-Multi-hop curve swaps and unknown Pump instructions remain unsupported/global.
+Multi-hop curve calls now use the pinned PumpSwap route identity mapping below.
+Unassociated/ambiguous calls and unknown Pump instructions remain unsupported/global.
 Canonical inner Anchor event-emission calls use the
 [official event-CPI tag](https://github.com/solana-foundation/anchor/blob/14cec14617f372b69403c6fe0c904e46a723ca3f/lang/src/event.rs),
 known event discriminator and Pump event-authority PDA; they are not new trade
@@ -254,3 +255,52 @@ and processed trade rates and at most 300 one-second depth samples. Already-stal
 arrivals are counted by the existing rejection metric, not blamed on queue residence.
 No 180-second continuity, 20-second freshness, quote units, strategy or lifecycle
 threshold is relaxed. CURRENT remains observed coverage, not guaranteed delivery.
+
+
+## Multi-hop recovery identity
+
+`backend/app/pump_amm_recovery.json` vendors only the multi_hop_swap selector,
+ordered fixed account names/addresses and argument types from
+[official pump_amm.json](https://github.com/pump-fun/pump-public-docs/blob/639b87fb45c3adeffa6f7c4a1bf0cb85e392bf22/idl/pump_amm.json),
+plus the hop-group specification from
+[official MULTI_HOP_SWAP.md](https://github.com/pump-fun/pump-public-docs/blob/639b87fb45c3adeffa6f7c4a1bf0cb85e392bf22/docs/instructions/MULTI_HOP_SWAP.md).
+Repository, commit, path and full IDL SHA-256 are recorded in the local schema.
+The Pump instruction schema and normal event schemas are unchanged.
+
+The PumpSwap selector is [43,100,73,19,233,246,111,148], with 16 fixed accounts
+and five remaining accounts per hop: base, quote, venue, base vault, quote vault.
+All keys are validated; only a venue equal to the Pump bonding-curve PDA derived
+from [b"bonding-curve", base_mint] identifies a curve. Pool venues do not supply
+Pump flow. No owner lookup, amount execution inference or additional HTTP request
+is used. Recovery still runs only for explicit truncated notifications.
+
+Association uses the original outer instruction index and CPI stackHeight ancestry.
+Each curve call must descend from its nearest canonical route. With missing stack
+heights, a sole outer route is still proven to contain its own inner-instruction
+group; an inner route with unknown ancestry cannot be assumed to be the parent.
+Multiple outer groups resolve independently; multiple inner routes require proven
+ancestry. A sibling route or a route elsewhere in the transaction cannot justify a
+call. Shared canonical user/global/config/program/event-authority accounts must
+match. Route shape, literal program accounts, global-config PDA, exact instruction
+length and curve-call Borsh byte-vector length are checked. Invalid routes are
+MALFORMED; missing, mismatched or ambiguous parents remain UNSUPPORTED_PUMP_TRADE.
+No partial route can clear pending coverage. All tracked curve mints in each
+associated route are included, and pool base mints are excluded.
+
+Fixed diagnostic buckets distinguish unsupported multi_hop_curve_swap,
+unknown_discriminator and other (including unsupported event-CPI shape). They
+count unsupported instructions, while the existing classifications count
+transactions. Additional counters record curve calls observed, distinct associated
+routes resolved, final multi-hop transaction classifications (untracked/tracked),
+and unresolved calls/ambiguous subsets. Routes resolved and calls observed have
+different units: one route can contain several curve calls. A transaction with an
+otherwise resolved route and an unrelated unknown Pump instruction still fails
+globally. Diagnostics never retain arbitrary discriminator keys, payloads or wallets.
+
+Transport transitions retain at most 32 timestamp/state records. The OBSERVE probe
+reports relative transition times, bounded queue samples and aggregate min/max
+buyer breadth, flow ratio, whale share and samples drawn only from actual CURRENT
+candidates. No samples means unavailable ranges, never fabricated zeros.
+This adds no PumpSwap BuyEvent/SellEvent decoding, MarketEvents, strategy features,
+wallet or transaction-submission capability. Existing 180-second continuity,
+20-second freshness, units and all numerical gates remain unchanged.

@@ -90,11 +90,20 @@ executed trade amounts, create/migration evidence or provider outages. Pending
 recovery blocks CURRENT without prematurely destroying prior coverage. Confirmed
 tracked impact still restarts that token's required clean window. Unresolved or
 unsupported instructions/transactions and recovery overflow remain global gaps.
-Legacy/v0/v1 compiled transaction messages are supported. Multi-hop curve swaps
-remain unsupported. Missing inner-instruction metadata cannot prove completeness.
+Legacy/v0/v1 compiled transaction messages are supported. Multi-hop curve-call identity is supported only through fully validated,
+unambiguously associated canonical PumpSwap routes; ambiguous/missing parents remain global gaps. Missing inner-instruction metadata cannot prove completeness.
 Standard RPC recovery consumes existing provider quota and may defer other work
 under adaptive pressure. At most 32 recoveries, one request in flight, three attempts
 and 10,000 dedup identities are retained; no raw transactions are stored. Queue lag,
 20-second freshness, units, real tracked truncations and transport outages can still
 prevent CURRENT. A preserved timer during pending recovery does not imply CURRENT.
 The original 180-second standard and every strategy/security/economics gate remain.
+
+
+The earlier 38 unsupported recoveries cannot be retrospectively subdivided from
+aggregate counts. New runs record fixed instruction-subtype counters. Multi-hop
+identity recovery covers only canonical curve PDAs in associated routes, not pool
+trade flow or executed amounts. Missing CPI ancestry for inner routes, malformed
+route shapes, unrelated unknown Pump instructions and transport loss remain
+conservative global gaps. Successful recovery can preserve coverage but cannot
+create samples, verified units, fresh observations, security or approved evidence.

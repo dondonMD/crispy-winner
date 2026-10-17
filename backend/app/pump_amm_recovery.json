@@ -1,0 +1,104 @@
+{
+  "source": {
+    "repository": "https://github.com/pump-fun/pump-public-docs",
+    "commit": "639b87fb45c3adeffa6f7c4a1bf0cb85e392bf22",
+    "path": "idl/pump_amm.json",
+    "idl_sha256": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b"
+  },
+  "remaining_accounts_source": {
+    "path": "docs/instructions/MULTI_HOP_SWAP.md",
+    "section": "Remaining accounts (5 per hop)"
+  },
+  "program": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+  "instruction": {
+    "name": "multi_hop_swap",
+    "discriminator": [
+      43,
+      100,
+      73,
+      19,
+      233,
+      246,
+      111,
+      148
+    ],
+    "accounts": [
+      {
+        "name": "user"
+      },
+      {
+        "name": "user_in_token_account"
+      },
+      {
+        "name": "user_out_token_account"
+      },
+      {
+        "name": "global_config"
+      },
+      {
+        "name": "fee_config"
+      },
+      {
+        "name": "user_volume_accumulator"
+      },
+      {
+        "name": "buyback_fee_recipient"
+      },
+      {
+        "name": "token_program",
+        "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      },
+      {
+        "name": "token_2022_program",
+        "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      },
+      {
+        "name": "system_program",
+        "address": "11111111111111111111111111111111"
+      },
+      {
+        "name": "event_authority"
+      },
+      {
+        "name": "program",
+        "address": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+      },
+      {
+        "name": "pump_program",
+        "address": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+      },
+      {
+        "name": "pump_global"
+      },
+      {
+        "name": "pump_fee_config"
+      },
+      {
+        "name": "pump_event_authority"
+      }
+    ],
+    "args": [
+      {
+        "name": "amount_in",
+        "type": "u64"
+      },
+      {
+        "name": "min_amount_out",
+        "type": "u64"
+      }
+    ]
+  },
+  "fixed_account_count": 16,
+  "hop_accounts": [
+    "base_mint",
+    "quote_mint",
+    "venue",
+    "base_vault",
+    "quote_vault"
+  ],
+  "curve_pda_seeds": [
+    "bonding-curve",
+    "base_mint"
+  ],
+  "curve_pda_program": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+}
