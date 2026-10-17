@@ -150,3 +150,40 @@ candidate counts. Discovery/trade decoding directly causes zero HTTP requests.
 Existing lifecycle, security cadence, Opportunity/Companion thresholds and all
 post-graduation/economic/historical gates are unchanged. After migration, PumpSwap
 trade events are not decoded by this Pump-program subscription; flow ages out.
+
+## Scoped decode gaps and bounded diagnostics
+
+TradeEvent's discriminator and 32-byte mint prefix are classified before parsing
+its tail. Untracked mints use an O(1) scanner membership check and skip full Borsh
+and tail base64 decoding, even when the unrelated tail is malformed. A lightweight
+placeholder retains the supported-event ordinal within successful invocation
+frames. Signature-plus-event-ordinal identity and bounded replay dedup remain.
+
+A strict decode failure with a recoverable tracked mint invokes only that token's
+trade-gap callback. It does not update the global decode-gap timestamp. Known
+queue losses, stale trades and rolling-buffer losses also remain token-local.
+Unknown/unrecoverable TradeEvent identity cannot safely exclude tracked mints:
+that case remains a global gap. Invalid outer notifications, incomplete/invalid
+invocation framing, subscription failure and disconnect remain global. In
+particular, a truncated log tail can conceal additional tracked events; seeing an
+untracked prefix earlier in that transaction does not prove complete coverage.
+Create/migration schema and accepted-prefix semantics are unchanged.
+
+Health uses fixed-cardinality counters: five event-type buckets, ten failure
+categories and their 5-by-10 matrix, plus fixed framing/reset-reason counters.
+Known event discriminators are static schema metadata; arbitrary discriminators,
+wallets, exception text and payloads are never retained in diagnostic maps.
+Framing distinguishes depth mismatch, unbalanced finish and unfinished invocations,
+and counts the literal `Log truncated` marker separately. That marker also resets
+global trade coverage when visible invocation frames happen to balance or no
+visible event survives the truncation. Prefix-classification
+and prefix-filter counters count examined logs, including logs whose invocation
+later fails or whose notification replays. Full TradeEvent decode counters now
+refer to tracked events in successful frames; untracked tails are not decoded.
+This intentionally changes the interpretation of the old all-mints decoded count.
+
+The 180-second observation requirement, 20-second configured freshness limit,
+quote-unit checks, Companion/core gates and RPC cadence remain unchanged. A scoped
+fix alone cannot establish CURRENT if genuine global framing/transport gaps keep
+occurring. `smoke_observe.py` records peak/final coverage, whether CURRENT was ever
+observed, bounded aggregate CURRENT examples, and overlapping blocker counts.

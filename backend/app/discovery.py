@@ -34,89 +34,161 @@ class DiscoveryProvider(Protocol):
     async def run(self) -> None: ...
 
 
-def decode_event(encoded: str) -> tuple[str, dict] | None:
-    """Decode pinned creation/migration prefixes and exact canonical TradeEvent.
+FAILURE_REASONS = (
+    "truncated", "unsupported_layout", "invalid_bool", "invalid_string", "invalid_pubkey",
+    "invalid_timestamp_value", "invocation_framing", "invalid_encoding", "outer_notification", "other",
+)
+FAILURE_EVENTS = tuple(e["name"] for e in SCHEMA["events"]) + ("unknown", "notification")
+TRADE_DISCRIMINATOR = next(k for k, v in EVENTS.items() if v == "TradeEvent")
 
-    Trades require the complete supported layout, including the quote suffix.
-    Reserve fields never supply USD prices, security or lifecycle evidence.
+
+class DecodeFailure(ValueError):
+    """Fixed diagnostic category; never includes payloads, addresses or wallets."""
+
+    def __init__(self, reason, detail="other"):
+        super().__init__(reason)
+        self.reason = reason
+        self.detail = detail
+
+
+def event_prefix(encoded: str) -> tuple[str, str | None]:
+    """Read only discriminator and TradeEvent mint, even if its tail is corrupt.
+
+    Partial base64 quanta are padded locally; ignored low bits cannot affect any
+    recovered complete byte. Every 32-byte nondefault key is a valid Solana key;
+    trading users/PDAs are not required to be on the Ed25519 curve.
     """
+    def prefix(length):
+        chars = (length * 8 + 5) // 6
+        if len(encoded) < chars:
+            raise DecodeFailure("truncated")
+        part = encoded[:chars]
+        try:
+            return base64.b64decode(part + "=" * (-len(part) % 4), validate=True)
+        except (ValueError, binascii.Error):
+            raise DecodeFailure("invalid_encoding") from None
+
+    name = EVENTS.get(prefix(8), "unknown")
+    if name != "TradeEvent":
+        return name, None
+    raw = prefix(40)
+    mint = str(Pubkey.from_bytes(raw[8:40]))
+    if mint == str(Pubkey.default()):
+        raise DecodeFailure("invalid_pubkey")
+    return name, mint
+
+
+def decode_event(encoded: str) -> tuple[str, dict] | None:
+    """Strict pinned TradeEvent layout; unchanged create/migration prefixes."""
     if len(encoded) > 16384:
-        raise ValueError("oversize event")
-    raw = base64.b64decode(encoded, validate=True)
+        raise DecodeFailure("unsupported_layout")
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error):
+        raise DecodeFailure("invalid_encoding") from None
     name = EVENTS.get(raw[:8])
     if name is None:
         return None
     offset = 8
     result: dict[str, Any] = {}
+
+    def take(size):
+        nonlocal offset
+        if offset + size > len(raw):
+            raise DecodeFailure("truncated")
+        value = raw[offset:offset + size]
+        offset += size
+        return value
+
     for field in FIELDS[name]:
         value: Any
         kind = field["type"]
         if kind == "string":
-            length = struct.unpack_from("<I", raw, offset)[0]
-            offset += 4
-            if length > 2048 or offset + length > len(raw):
-                raise ValueError("invalid Borsh string")
-            value = raw[offset : offset + length].decode("utf-8")
-            offset += length
+            length = struct.unpack("<I", take(4))[0]
+            if length > 2048:
+                raise DecodeFailure("invalid_string")
+            data = take(length)
+            try:
+                value = data.decode("utf-8")
+            except UnicodeDecodeError:
+                raise DecodeFailure("invalid_string") from None
         elif kind == "pubkey":
-            value = str(Pubkey.from_bytes(raw[offset : offset + 32]))
-            offset += 32
+            value = str(Pubkey.from_bytes(take(32)))
         elif kind == "bool":
-            value = raw[offset]
+            value = take(1)[0]
             if value not in (0, 1):
-                raise ValueError("invalid Borsh boolean")
+                raise DecodeFailure("invalid_bool")
             value = bool(value)
-            offset += 1
         elif isinstance(kind, dict) and kind == {"vec": {"defined": {"name": "Shareholder"}}}:
-            length = struct.unpack_from("<I", raw, offset)[0]
-            offset += 4
-            if length > 10 or offset + length * 34 > len(raw):
-                raise ValueError("invalid shareholders")
+            length = struct.unpack("<I", take(4))[0]
+            if length > 10:
+                raise DecodeFailure("unsupported_layout")
             value = []
             for _ in range(length):
-                address = str(Pubkey.from_bytes(raw[offset:offset + 32]))
-                share = struct.unpack_from("<H", raw, offset + 32)[0]
+                address = str(Pubkey.from_bytes(take(32)))
+                share = struct.unpack("<H", take(2))[0]
                 if share > 10000:
-                    raise ValueError("invalid share")
+                    raise DecodeFailure("invalid_timestamp_value")
                 value.append((address, share))
-                offset += 34
         elif kind in ("u64", "i64"):
-            value = struct.unpack_from("<Q" if kind == "u64" else "<q", raw, offset)[0]
-            offset += 8
+            value = struct.unpack("<Q" if kind == "u64" else "<q", take(8))[0]
         else:
-            raise ValueError("unsupported prefix schema")
+            raise DecodeFailure("unsupported_layout")
         result[field["name"]] = value
         if field["name"] == "timestamp" and name != "TradeEvent":
             break
     if name == "TradeEvent":
         if offset != len(raw):
-            raise ValueError("unsupported trade layout")
+            raise DecodeFailure("unsupported_layout")
+        if (result["mint"] == str(Pubkey.default()) or result["user"] == str(Pubkey.default())):
+            raise DecodeFailure("invalid_pubkey")
         if (not result["token_amount"] or not (result["quote_amount"] or result["sol_amount"])
-                or not 1_500_000_000 <= result["timestamp"] <= time.time() + 60
-                or result["mint"] == str(Pubkey.default())
-                or result["user"] == str(Pubkey.default())):
-            raise ValueError("invalid trade values")
+                or not 1_500_000_000 <= result["timestamp"] <= time.time() + 60):
+            raise DecodeFailure("invalid_timestamp_value")
         return name, result
     mint = Pubkey.from_string(result["mint"])
     curve = Pubkey.find_program_address([b"bonding-curve", bytes(mint)], Pubkey.from_string(PUMP_PROGRAM))[0]
-    if result["bonding_curve"] != str(curve) or result["timestamp"] <= 0:
-        raise ValueError("invalid event identity")
-    # Migration's pool follows timestamp; read it explicitly from the canonical IDL.
+    if result["bonding_curve"] != str(curve):
+        raise DecodeFailure("invalid_pubkey")
+    if result["timestamp"] <= 0:
+        raise DecodeFailure("invalid_timestamp_value")
     if name == "CompletePumpAmmMigrationEvent":
-        result["pool"] = str(Pubkey.from_bytes(raw[offset : offset + 32]))
+        result["pool"] = str(Pubkey.from_bytes(take(32)))
     return name, result
 
 
 class OnchainPumpDiscovery:
-    def __init__(self, submit, url=None, tracked=None, on_gap=None, quote_for=None):
+    def __init__(self, submit, url=None, tracked=None, on_gap=None, quote_for=None, on_trade_gap=None):
         self.submit = submit
         self.tracked = tracked or (lambda mint: False)
         self.on_gap = on_gap or (lambda: None)
+        # Missing local callback must remain fail-closed for standalone consumers.
+        self.on_trade_gap = on_trade_gap or (lambda mint: self.global_gap("unknown_trade_identity"))
         self.quote_for = quote_for or (lambda mint: "")
         self.url = os.getenv("SOLANA_WS_URL", "").strip() if url is None else url
         self.seen = Deduplicator(10000)
         self.connected_intervals: deque[tuple[float, float]] = deque(maxlen=32)
         self.health: dict[str, Any] = {
+            "trade_events_prefix_classified": 0,
+            "untracked_trades_prefix_filtered": 0,
+            "tracked_trades_fully_decoded": 0,
+            "tracked_trade_decode_failures": 0,
+            "unknown_mint_decode_failures": 0,
+            "global_continuity_resets": 0,
+            "per_token_decode_resets": 0,
+            "global_reset_reasons": dict.fromkeys(("transport", "shutdown", "unknown_trade_identity",
+                                                   "invocation_framing", "outer_notification", "event_decode", "log_truncation"), 0),
+            "framing_failure_details": dict.fromkeys(("depth_mismatch", "unbalanced_finish",
+                                                     "unfinished_invocations", "other"), 0),
+            "log_truncation_notifications": 0,
+            "balanced_log_truncation_gaps": 0,
+            "no_event_log_truncation_gaps": 0,
+            "framing_with_log_truncation": 0,
+            "framing_without_log_truncation": 0,
+            "decode_failures_by_reason": dict.fromkeys(FAILURE_REASONS, 0),
+            "decode_failures_by_event": dict.fromkeys(FAILURE_EVENTS, 0),
+            "decode_failure_matrix": {name: dict.fromkeys(FAILURE_REASONS, 0) for name in FAILURE_EVENTS},
+            "diagnostic_discriminators": {name: key.hex() for key, name in EVENTS.items()},
             "trade_events": 0, "tracked_trades": 0, "untracked_trades": 0,
             "duplicate_trades": 0, "invalid_unit_trades": 0,
             "last_disconnect": 0, "reconnected_at": 0, "last_decode_gap": 0,
@@ -152,6 +224,28 @@ class OnchainPumpDiscovery:
             self.health["configuration_error"] = True
             self.health["enabled"] = False
 
+    def record_decode_failure(self, name, exc):
+        name = name if name in FAILURE_EVENTS else "unknown"
+        reason = exc.reason if isinstance(exc, DecodeFailure) else "other"
+        reason = reason if reason in FAILURE_REASONS else "other"
+        self.health["decode_failures_by_reason"][reason] += 1
+        self.health["decode_failures_by_event"][name] += 1
+        self.health["decode_failure_matrix"][name][reason] += 1
+        if reason == "invocation_framing":
+            detail = exc.detail if isinstance(exc, DecodeFailure) else "other"
+            detail = detail if detail in self.health["framing_failure_details"] else "other"
+            self.health["framing_failure_details"][detail] += 1
+        self.health["decoding_errors"] += 1
+        self.health["errors"] += 1
+
+    def global_gap(self, reason):
+        reason = reason if reason in self.health["global_reset_reasons"] else "outer_notification"
+        self.health["global_continuity_resets"] += 1
+        self.health["global_reset_reasons"][reason] += 1
+        if reason not in ("transport", "shutdown"):
+            self.health["last_decode_gap"] = time.time()
+        self.on_gap()
+
     def receive(self, payload):
         """Synchronous bounded decode/submit, independent of HTTP RPC availability."""
         self.health["messages"] += 1
@@ -175,7 +269,12 @@ class OnchainPumpDiscovery:
                 or any(not isinstance(line, str) or len(line) > 20000 for line in logs)
             ):
                 raise ValueError("invalid logs")
+            log_truncated = any(line == "Log truncated" for line in logs)
+            self.health["log_truncation_notifications"] += log_truncated
             if not any(line.startswith("Program data: ") for line in logs):
+                if log_truncated:
+                    self.health["no_event_log_truncation_gaps"] += 1
+                    self.global_gap("log_truncation")
                 self.health["ignored_events"] += 1
                 return
             signature = str(Signature.from_string(value["signature"]))
@@ -186,42 +285,75 @@ class OnchainPumpDiscovery:
             for line in logs:
                 if match := INVOKE.fullmatch(line):
                     if int(match[2]) != len(frames) + 1 or len(frames) >= 64:
-                        raise ValueError("invalid invocation depth")
+                        raise DecodeFailure("invocation_framing", "depth_mismatch")
                     frames.append((match[1], []))
                 elif match := FINISH.fullmatch(line):
                     if not frames or frames[-1][0] != match[1]:
-                        raise ValueError("unbalanced invocation")
+                        raise DecodeFailure("invocation_framing", "unbalanced_finish")
                     _, events = frames.pop()
                     if match[2] == "success":
                         (frames[-1][1] if frames else decoded).extend(events)
                 elif line.startswith("Program data: ") and frames and frames[-1][0] == PUMP_PROGRAM:
+                    name = "unknown"
+                    mint = None
                     try:
+                        # Recover the discriminator independently so a broken mint
+                        # still has an explicit TradeEvent diagnostic category.
+                        try:
+                            name = EVENTS.get(base64.b64decode(line[14:25] + "=", validate=True), "unknown")
+                        except (ValueError, binascii.Error):
+                            pass
+                        if name == "TradeEvent":
+                            self.health["trade_events_prefix_classified"] += 1
+                            _, mint = event_prefix(line[14:])
+                            if not self.tracked(mint):
+                                self.health["untracked_trades_prefix_filtered"] += 1
+                                # A placeholder keeps the supported-event ordinal
+                                # stable despite filtering or membership changes.
+                                frames[-1][1].append((name, {"_filtered": True, "mint": mint}))
+                                continue
                         decoded_event = decode_event(line[14:])
-                    except (ValueError, TypeError, IndexError, struct.error, binascii.Error):
-                        # A bad trade must not suppress a valid create/migration in
-                        # the same successful invocation. Lost flow resets coverage.
-                        self.health["last_decode_gap"] = time.time()
-                        self.on_gap()
-                        self.health["decoding_errors"] += 1
-                        self.health["errors"] += 1
+                    except (ValueError, TypeError, IndexError, struct.error, binascii.Error) as exc:
+                        self.record_decode_failure(name, exc)
+                        if name == "TradeEvent" and mint is not None:
+                            self.health["tracked_trade_decode_failures"] += 1
+                            self.health["per_token_decode_resets"] += 1
+                            self.on_trade_gap(mint)
+                        else:
+                            if name == "TradeEvent":
+                                self.health["unknown_mint_decode_failures"] += 1
+                            self.global_gap("unknown_trade_identity" if name == "TradeEvent" else "event_decode")
+                        # Preserve ordinal even for a supported malformed event.
+                        if name in FAILURE_EVENTS[:3]:
+                            frames[-1][1].append((name, {"_invalid": True}))
                         continue
                     if decoded_event is not None:
                         frames[-1][1].append(decoded_event)
             if frames:
-                raise ValueError("incomplete logs")
+                raise DecodeFailure("invocation_framing", "unfinished_invocations")
+            if log_truncated:
+                # Visible frames can balance despite omitted logs. Keep the existing
+                # decoded create/migration behavior, but never claim complete flow.
+                self.health["balanced_log_truncation_gaps"] += 1
+                self.global_gap("log_truncation")
             if not decoded:
                 self.health["ignored_events"] += 1
                 return
             # One transaction may contain several creates; deduplicate the whole
             # notification only after decoding all events successfully.
-            self.health["trade_events"] += sum(n == "TradeEvent" for n, _ in decoded)
+            full_trades = sum(n == "TradeEvent" and not f.get("_filtered") and not f.get("_invalid")
+                              for n, f in decoded)
+            self.health["trade_events"] += full_trades
+            self.health["tracked_trades_fully_decoded"] += full_trades
             if not self.seen.accept(signature):
-                self.health["duplicate_trades"] += sum(n == "TradeEvent" for n, _ in decoded)
+                self.health["duplicate_trades"] += full_trades
                 self.health["duplicates"] += 1
                 return
             for ordinal, (name, fields) in enumerate(decoded):
+                if fields.get("_invalid"):
+                    continue
                 if name == "TradeEvent":
-                    if not self.tracked(fields["mint"]):
+                    if fields.get("_filtered") or not self.tracked(fields["mint"]):
                         self.health["untracked_trades"] += 1
                         continue
                     quote = fields["quote_mint"]
@@ -291,11 +423,13 @@ class OnchainPumpDiscovery:
                 self.health["launch_events" if kind == "create" else "migration_events"] += 1
                 self.health["last_event"] = time.time()
                 self.submit(event)
-        except (ValueError, TypeError, KeyError, IndexError, struct.error, binascii.Error):
-            self.health["last_decode_gap"] = time.time()
-            self.on_gap()
-            self.health["decoding_errors"] += 1
-            self.health["errors"] += 1
+        except (ValueError, TypeError, KeyError, IndexError, struct.error, binascii.Error) as exc:
+            failure = exc if isinstance(exc, DecodeFailure) else DecodeFailure("outer_notification")
+            self.record_decode_failure("notification", failure)
+            if failure.reason == "invocation_framing":
+                key = "framing_with_log_truncation" if any(line == "Log truncated" for line in logs) else "framing_without_log_truncation"
+                self.health[key] += 1
+            self.global_gap(failure.reason if failure.reason == "invocation_framing" else "outer_notification")
 
     async def run(self):
         if not self.health["enabled"]:
@@ -355,12 +489,10 @@ class OnchainPumpDiscovery:
                                 else:
                                     self.health["ignored_events"] += 1
                             except (ValueError, TypeError, AttributeError):
-                                self.health["last_decode_gap"] = time.time()
-                                self.on_gap()
-                                self.health["decoding_errors"] += 1
-                                self.health["errors"] += 1
+                                self.global_gap("outer_notification")
+                                self.record_decode_failure("notification", DecodeFailure("outer_notification"))
                 except (OSError, websockets.WebSocketException, TimeoutError, ValueError):
-                    self.on_gap()
+                    self.global_gap("transport")
                     if self.health["connected_since"]:
                         self.connected_intervals.append((self.health["connected_since"], time.time()))
                     self.health.update(
@@ -376,5 +508,5 @@ class OnchainPumpDiscovery:
                     self.health["reconnect_level"] = attempt
                     await asyncio.sleep(min(60, delay + random.uniform(0, delay * 0.2)))
         finally:
-            self.on_gap()
+            self.global_gap("shutdown")
             self.health.update(connected=False, subscriptions=0, connected_since=0)

@@ -5,6 +5,7 @@ import os
 import time
 import uuid
 from collections import deque, OrderedDict
+from typing import Any
 
 from alembic import command
 from alembic.config import Config
@@ -61,6 +62,8 @@ class RadarEngine:
         self.running = False
         self.processed = 0
         self.trade_observations = {"buy": 0, "sell": 0}
+        self.trade_continuity: dict[str, Any] = {"global_resets": 0, "per_token_resets": 0,
+                                 "per_token_reasons": dict.fromkeys(("decode", "stale", "queue", "buffer"), 0)}
         self.out_of_order = 0
         self.duplicates = 0
         self.rejected_payloads = 0
@@ -72,6 +75,7 @@ class RadarEngine:
         )
         self.onchain = OnchainPumpDiscovery(
             self.submit, tracked=lambda mint: mint in self.tokens, on_gap=self.invalidate_trade_coverage,
+            on_trade_gap=self.invalidate_token_trade_coverage,
             quote_for=lambda mint: self.tokens[mint].verified_quote_mint if mint in self.tokens else ""
         )
         self.discovery_providers: list[DiscoveryProvider] = [self.onchain, self.pump]
@@ -190,10 +194,7 @@ class RadarEngine:
         accepted = self.queue.put(event, priority)
         for mint, stamp in self.queue.trade_gaps.items():
             if mint in self.tokens:
-                self.tokens[mint].trade_gap = stamp
-                for features in self.tokens[mint].features.values():
-                    features["continuity_valid"] = False
-                    features["trade_evidence"] = "PARTIAL" if features.get("samples") else "UNAVAILABLE"
+                self.invalidate_token_trade_coverage(mint, reason="queue", now=stamp)
         self.queue.trade_gaps.clear()
         return accepted
 
@@ -258,7 +259,7 @@ class RadarEngine:
             return False
         if abs(now - event.ts) > self.settings.max_data_age_seconds:
             if event.kind == "trade" and event.mint in self.tokens:
-                self.tokens[event.mint].trade_gap = now
+                self.invalidate_token_trade_coverage(event.mint, reason="stale", now=now)
             self.rejected_payloads += 1
             return False
         if not self.dedup.accept(event.event_id):
@@ -339,7 +340,7 @@ class RadarEngine:
             if len(token.events) == token.events.maxlen and token.events:
                 oldest = token.events[0]
                 if oldest.kind == "trade" and event.ts - oldest.ts < 180:
-                    token.trade_gap = now
+                    self.invalidate_token_trade_coverage(token.mint, reason="buffer", now=now)
             token.events.append(event)
         if event.price is not None:
             token.price = event.price
@@ -464,9 +465,7 @@ class RadarEngine:
         if self.settings.mode != "DEMO":
             if not token.trade_tracking_since:
                 token.trade_tracking_since = now
-            health = self.onchain.health
-            start = max(health["connected_since"], health["last_decode_gap"], token.trade_tracking_since, token.trade_gap)
-            clean = max(0, now - start) if health["connected"] else 0
+            clean = self.trade_coverage_seconds(token, now)
             for seconds, features in token.features.items():
                 features["coverage_seconds"] = clean
                 features["continuity_valid"] = clean >= int(seconds)
@@ -1011,13 +1010,31 @@ class RadarEngine:
 
         return companion_examples(self.settings, now)
 
+    def invalidate_token_trade_coverage(self, mint, reason="decode", now=None):
+        token = self.tokens.get(mint)
+        if token is None:
+            return
+        token.trade_gap = max(token.trade_gap, time.time() if now is None else now)
+        self.trade_continuity["per_token_resets"] += 1
+        reason = reason if reason in self.trade_continuity["per_token_reasons"] else "decode"
+        self.trade_continuity["per_token_reasons"][reason] += 1
+        for features in token.features.values():
+            features["continuity_valid"] = False
+            features["trade_evidence"] = "PARTIAL" if features.get("samples") else "UNAVAILABLE"
+
     def invalidate_trade_coverage(self):
-        # Called only on gaps, never per unrelated WSS trade. State is bounded by candidates.
+        # Only transport or unassignable event loss reaches this callback.
+        self.trade_continuity["global_resets"] += 1
         for token in self.tokens.values():
             token.trade_gap = time.time()
             for features in token.features.values():
                 features["continuity_valid"] = False
                 features["trade_evidence"] = "PARTIAL" if features.get("samples") else "UNAVAILABLE"
+
+    def trade_coverage_seconds(self, token, now):
+        health = self.onchain.health
+        start = max(health["connected_since"], health["last_decode_gap"], token.trade_tracking_since, token.trade_gap)
+        return max(0, now - start) if health["connected"] else 0
 
     def trade_status(self, token, now=None):
         now = time.time() if now is None else now
@@ -1124,6 +1141,7 @@ class RadarEngine:
                 "queue_limit": self.queue.maximum,
                 "dropped_events": self.queue.dropped,
                 "trade_observations": self.trade_observations,
+                "trade_continuity": self.trade_continuity,
                 "dropped_trade_events": self.queue.dropped_trades,
                 "dropped_critical_events": self.queue.dropped_critical,
                 "clean_wss_coverage_seconds": max(0, time.time() - max(self.onchain.health["connected_since"], self.onchain.health["last_decode_gap"]))

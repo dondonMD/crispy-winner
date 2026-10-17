@@ -32,6 +32,11 @@ async def main(seconds=65, max_deep=25):
         pressure_changes = []
         previous_level = -1
         peak_expiry_deferred = 0
+        maximum_clean_wss_coverage = 0.0
+        maximum_token_clean_coverage = 0.0
+        maximum_current_candidates = 0
+        first_current_seconds = None
+        observed_current_examples = []
         original_inspect = engine.rpc.inspect
         original = engine.rpc.curve_progress_batch
         original_process = engine.process
@@ -82,6 +87,22 @@ async def main(seconds=65, max_deep=25):
                 peak_expiry_deferred = max(
                     peak_expiry_deferred, engine.expiry_metrics["expiry_deferred_for_poll"]
                 )
+                sample_now = time.time()
+                health = engine.onchain.health
+                wss_clean = (max(0, sample_now - max(health["connected_since"], health["last_decode_gap"]))
+                             if health["connected"] else 0)
+                maximum_clean_wss_coverage = max(maximum_clean_wss_coverage, wss_clean)
+                maximum_token_clean_coverage = max(maximum_token_clean_coverage,
+                    max((engine.trade_coverage_seconds(t, sample_now) for t in engine.tokens.values()), default=0))
+                current_tokens = [t for t in engine.tokens.values() if engine.trade_status(t, sample_now) == "CURRENT"]
+                maximum_current_candidates = max(maximum_current_candidates, len(current_tokens))
+                if current_tokens and first_current_seconds is None:
+                    first_current_seconds = round(time.monotonic() - start, 2)
+                    observed_current_examples = [
+                        {k: t.features["180"].get(k) for k in ("buy_count", "sell_count",
+                         "estimated_independent_buyers", "flow_ratio", "whale_share", "coverage_seconds")}
+                        for t in current_tokens[:5]
+                    ]
                 level = engine.rpc.health["backoff_level"]
                 if level != previous_level:
                     pressure_changes.append({"seconds": round(time.monotonic() - start, 1), "level": level})
@@ -100,7 +121,26 @@ async def main(seconds=65, max_deep=25):
                 engine.snapshot()
             companion_view_requests = engine.rpc.health["requests"] - requests_before_views
             elapsed = time.monotonic() - start
+            trade_blockers = dict.fromkeys(("no_samples", "invalid_units", "insufficient_samples",
+                                           "insufficient_continuity", "stale", "disconnected"), 0)
+            for token in engine.tokens.values():
+                f = token.features.get("180", {})
+                trade_blockers["no_samples"] += not f.get("samples")
+                trade_blockers["invalid_units"] += not f.get("units_valid")
+                trade_blockers["insufficient_samples"] += f.get("samples", 0) < 3
+                trade_blockers["insufficient_continuity"] += engine.trade_coverage_seconds(token, time.time()) < 180
+                trade_blockers["stale"] += not (0 <= time.time() - token.last_trade <= engine.settings.max_data_age_seconds)
+                trade_blockers["disconnected"] += not engine.onchain.health["connected"]
             report = {
+                "maximum_clean_wss_coverage_seconds": round(maximum_clean_wss_coverage, 2),
+                "maximum_token_clean_coverage_seconds": round(maximum_token_clean_coverage, 2),
+                "final_max_token_clean_coverage_seconds": round(max((engine.trade_coverage_seconds(t, time.time())
+                    for t in engine.tokens.values()), default=0), 2),
+                "maximum_current_candidates": maximum_current_candidates,
+                "first_current_seconds": first_current_seconds,
+                "observed_current_examples": observed_current_examples,
+                "trade_evidence_blockers": trade_blockers,
+                "trade_continuity": engine.trade_continuity,
                 "average_process_cpu_pct": round(100 * (time.process_time() - start_cpu) / elapsed, 2),
                 "bounded_trade_unit_observations": dict(Counter(
                     f"{event.currency}:{event.evidence.get('quote_source', 'unknown')}"
