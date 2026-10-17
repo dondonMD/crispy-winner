@@ -56,7 +56,7 @@ Configure `SOLANA_WS_URL` privately for direct standard Solana launch discovery 
 
 | Provider | Default role | Cost / access |
 |---|---|---|
-| Standard Solana WSS | Pump create/migration discovery via logsSubscribe | Configure SOLANA_WS_URL; one connection; no HTTP enrichment |
+| Standard Solana WSS | Pump create/migration discovery and tracked trade evidence via logsSubscribe | Configure SOLANA_WS_URL; one connection; bounded getTransaction identity recovery only for explicit log truncations |
 | PumpPortal | Optional launch/migration alternative | Disabled unless PUMPPORTAL_ENABLED=true; availability varies |
 | PumpPortal optional trades | Bounded wallet-level candidate trades | Opt-in API key; funded provider account; docs currently 0.01 SOL/10,000 events |
 | Solana public RPC | Batched pre-grad curve progress; selective authorities, Token-2022, holders, creator balances, pool/curve verification | Free, throttled; custom URL optional |

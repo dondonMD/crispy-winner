@@ -37,6 +37,8 @@ async def main(seconds=65, max_deep=25):
         maximum_current_candidates = 0
         first_current_seconds = None
         observed_current_examples = []
+        clean_candidates: OrderedDict[str, None] = OrderedDict()
+        maximum_oldest_trade_age = 0.0
         original_inspect = engine.rpc.inspect
         original = engine.rpc.curve_progress_batch
         original_process = engine.process
@@ -94,6 +96,12 @@ async def main(seconds=65, max_deep=25):
                 maximum_clean_wss_coverage = max(maximum_clean_wss_coverage, wss_clean)
                 maximum_token_clean_coverage = max(maximum_token_clean_coverage,
                     max((engine.trade_coverage_seconds(t, sample_now) for t in engine.tokens.values()), default=0))
+                maximum_oldest_trade_age = max(maximum_oldest_trade_age, engine.queue.snapshot(sample_now)["oldest_trade_age"])
+                for t in engine.tokens.values():
+                    if engine.trade_coverage_seconds(t, sample_now) >= 180 and not engine.recovery.overlaps(t, sample_now):
+                        clean_candidates[t.mint] = None
+                        if len(clean_candidates) > engine.settings.max_candidates:
+                            clean_candidates.popitem(last=False)
                 current_tokens = [t for t in engine.tokens.values() if engine.trade_status(t, sample_now) == "CURRENT"]
                 maximum_current_candidates = max(maximum_current_candidates, len(current_tokens))
                 if current_tokens and first_current_seconds is None:
@@ -122,7 +130,7 @@ async def main(seconds=65, max_deep=25):
             companion_view_requests = engine.rpc.health["requests"] - requests_before_views
             elapsed = time.monotonic() - start
             trade_blockers = dict.fromkeys(("no_samples", "invalid_units", "insufficient_samples",
-                                           "insufficient_continuity", "stale", "disconnected"), 0)
+                                           "insufficient_continuity", "stale", "disconnected", "pending_recovery"), 0)
             for token in engine.tokens.values():
                 f = token.features.get("180", {})
                 trade_blockers["no_samples"] += not f.get("samples")
@@ -131,7 +139,14 @@ async def main(seconds=65, max_deep=25):
                 trade_blockers["insufficient_continuity"] += engine.trade_coverage_seconds(token, time.time()) < 180
                 trade_blockers["stale"] += not (0 <= time.time() - token.last_trade <= engine.settings.max_data_age_seconds)
                 trade_blockers["disconnected"] += not engine.onchain.health["connected"]
+                trade_blockers["pending_recovery"] += engine.recovery.overlaps(token, time.time())
             report = {
+                "truncation_recovery": engine.recovery.snapshot(),
+                "ordinary_monitoring_rpc_requests": engine.rpc.health["requests"] - engine.rpc.truncation_metrics["requests"],
+                "queue_lag": engine.queue.snapshot(),
+                "maximum_oldest_trade_age": maximum_oldest_trade_age,
+                "processed_trade_rate": sum(engine.trade_observations.values()) / elapsed,
+                "candidates_reaching_180_clean_seconds_bounded": len(clean_candidates),
                 "maximum_clean_wss_coverage_seconds": round(maximum_clean_wss_coverage, 2),
                 "maximum_token_clean_coverage_seconds": round(maximum_token_clean_coverage, 2),
                 "final_max_token_clean_coverage_seconds": round(max((engine.trade_coverage_seconds(t, time.time())

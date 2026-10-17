@@ -66,11 +66,12 @@ messages over a stable 60-second connection resets the attempt level. Ping every
 20 seconds with 20-second timeout; receive timeout 90 seconds; cancellation closes
 the socket. There is no catch-up/backfill: launches during outages may be missed.
 
-Discovery has **zero HTTP enrichment calls**. It does not poll transactions,
-metadata URIs, accounts or security. Logs without a complete supported event are
-skipped. Providers that omit/truncate event logs cannot provide full discovery
+Ordinary discovery/trade decoding has **zero HTTP enrichment calls**. It does not
+poll transactions, metadata URIs, accounts or security. Explicit truncations alone
+use the bounded identity-recovery queue described below; missing supported events
+are never synthesized. Providers that omit/truncate event logs cannot provide full discovery
 coverage. Missing migration events likewise remain unavailable rather than
-inferred. There is no expensive fallback queue or HTTP retry amplification.
+inferred. Recovery bounds and retries share the existing RPC limiter and pressure controller.
 The adaptive shared HTTP RPC controller and hot/security/background priorities
 remain unchanged. New genuine candidates naturally cause the same existing
 bounded lifecycle/security polling as candidates previously found by PumpPortal.
@@ -146,7 +147,8 @@ can enter their existing bounded time window without rewinding lifecycle time.
 
 Health adds decoded/accepted/ignored/duplicate/invalid-unit trades, buy/sell
 processed counts, separate drops, clean coverage and CURRENT/PARTIAL/UNAVAILABLE
-candidate counts. Discovery/trade decoding directly causes zero HTTP requests.
+candidate counts. Ordinary discovery/trade decoding directly causes zero HTTP
+requests; explicit truncation recovery is accounted separately.
 Existing lifecycle, security cadence, Opportunity/Companion thresholds and all
 post-graduation/economic/historical gates are unchanged. After migration, PumpSwap
 trade events are not decoded by this Pump-program subscription; flow ages out.
@@ -174,9 +176,9 @@ categories and their 5-by-10 matrix, plus fixed framing/reset-reason counters.
 Known event discriminators are static schema metadata; arbitrary discriminators,
 wallets, exception text and payloads are never retained in diagnostic maps.
 Framing distinguishes depth mismatch, unbalanced finish and unfinished invocations,
-and counts the literal `Log truncated` marker separately. That marker also resets
-global trade coverage when visible invocation frames happen to balance or no
-visible event survives the truncation. Prefix-classification
+and counts the literal `Log truncated` marker separately. Explicit truncations
+with a valid signature now enter bounded identity recovery, including balanced
+frames and notifications with no visible event. Other framing failures remain global. Prefix-classification
 and prefix-filter counters count examined logs, including logs whose invocation
 later fails or whose notification replays. Full TradeEvent decode counters now
 refer to tracked events in successful frames; untracked tails are not decoded.
@@ -187,3 +189,68 @@ quote-unit checks, Companion/core gates and RPC cadence remain unchanged. A scop
 fix alone cannot establish CURRENT if genuine global framing/transport gaps keep
 occurring. `smoke_observe.py` records peak/final coverage, whether CURRENT was ever
 observed, bounded aggregate CURRENT examples, and overlapping blocker counts.
+
+
+## Targeted truncation recovery
+
+Only a successful notification containing the exact `Log truncated` marker may
+schedule standard [getTransaction](https://solana.com/docs/rpc/http/gettransaction).
+Ordinary TradeEvents make zero HTTP requests. Recovery uses the existing
+SOLANA_RPC_URL, confirmed commitment, JSON encoding and maxSupportedTransactionVersion=1.
+It reads complete compiled outer and inner instructions, not meta.logMessages.
+Version-0 keys resolve as static keys + loaded writable + loaded readonly addresses;
+lookup counts and every account/program index are checked. Current
+[standard v1 messages](https://solana.com/docs/core/transactions/versioned-transactions)
+use inline keys, no lookup tables and a strictly bounded transactionConfig. The
+[official JSON structures](https://solana.com/docs/rpc/json-structures) define the
+same compiled-instruction shape; no binary v1 deserializer is needed. Missing CPI metadata,
+unsupported versions, mismatched signatures/slots and malformed data fail closed.
+
+`backend/app/pump_instructions.json` extracts discriminators and ordered account
+names from the same official IDL commit
+`639b87fb45c3adeffa6f7c4a1bf0cb85e392bf22` (verified current 2026-10-17;
+full IDL SHA-256 `7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207`).
+Supported identity layouts: buy, buy_exact_sol_in, buy_v2/v3,
+buy_exact_quote_in_v2/v3, sell and sell_v2/v3. The canonical mint account is
+position 2 for legacy instructions and base_mint position 1 for v2/v3.
+Known nontrade instructions are distinguished using the pinned IDL.
+Multi-hop curve swaps and unknown Pump instructions remain unsupported/global.
+Canonical inner Anchor event-emission calls use the
+[official event-CPI tag](https://github.com/solana-foundation/anchor/blob/14cec14617f372b69403c6fe0c904e46a723ca3f/lang/src/event.rs),
+known event discriminator and Pump event-authority PDA; they are not new trade
+instructions. Instruction requested amounts are never converted into trade evidence.
+No missing trade volumes or creations/migrations are reconstructed by recovery.
+
+The queue holds at most 32 signatures, with one in-flight request, three attempts
+at most and a 45-second pending-age limit checked between requests. A request may
+finish after that limit by the existing bounded HTTP timeout. Null responses retry
+with 2/4-second waits; provider cooldown can extend waits but never bypasses the
+age limit. The worker shares the existing two-request/second limiter, concurrency
+semaphore and adaptive 429/error backoff with monitoring. Signature dedup holds
+at most 10,000 entries. Queue overflow immediately creates a global gap.
+No transaction payload or wallet list is persisted.
+
+Pending recovery blocks CURRENT for overlapping candidate feature windows and
+immediately changes structured evidence to PARTIAL/UNAVAILABLE. System Health and
+token coverage_state show `PENDING RECOVERY`; the previous clean-window start is
+preserved. Only UNTRACKED_CONFIRMED clears pending with no gap. TRACKED_AFFECTED
+creates local gaps for all affected currently tracked mints at the original
+notification observation time. UNSUPPORTED_PUMP_TRADE, TRANSACTION_UNAVAILABLE,
+TRANSACTION_FAILED and MALFORMED create global gaps. An intervening transport or
+queue gap cannot be erased by a later untracked confirmation. A disconnect still
+starts global coverage again. No general outage backfill is provided.
+
+Health exposes actual recovery RPC requests/successful RPC responses/errors/429s,
+classification counts, dedup, overflow, pending/peak/oldest age and local/global
+recovery gaps. Successful RPC responses include temporary null results; classification
+counts describe actual resolutions. Ordinary monitoring requests equal total RPC
+requests minus recovery requests. The normal-trade HTTP delta remains zero;
+explicit truncation recovery increases total HTTP demand and consumes provider quota.
+
+Queue instrumentation preserves capacity and processing order: exact peak depth,
+oldest source event/trade age, oldest queue residence, events/trades that were fresh
+on arrival but exceeded the existing age limit before drain, cumulative accepted
+and processed trade rates and at most 300 one-second depth samples. Already-stale
+arrivals are counted by the existing rejection metric, not blamed on queue residence.
+No 180-second continuity, 20-second freshness, quote units, strategy or lifecycle
+threshold is relaxed. CURRENT remains observed coverage, not guaranteed delivery.

@@ -258,3 +258,10 @@ on-chain path additionally requires a clean 180-second observation window and at
 least three samples. Partial/unknown flow remains unavailable. Opportunity scoring,
 EARLY_OPPORTUNITY rules and all existing numerical thresholds are unchanged;
 trade availability alone does not force an early opportunity or Companion entry.
+
+
+Explicit log-truncation recovery does not change this ranking. Pending recovery
+blocks CURRENT trade evidence; untracked confirmation can preserve prior clean
+coverage, while tracked impact and unresolved recovery retain local/global gaps.
+The 180-second requirement, freshness, units, thresholds and all Companion/core
+gates remain unchanged. See [recovery accounting](providers/onchain-discovery.md#targeted-truncation-recovery).

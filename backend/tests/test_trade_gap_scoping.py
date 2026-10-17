@@ -226,13 +226,14 @@ def test_local_gap_cannot_be_rewound_by_an_older_buffer_timestamp(tracked_engine
     assert e.tokens[other].trade_gap == 0
 
 
-def test_balanced_visible_frames_with_log_truncation_still_reset_global_coverage(tracked_engine):
+def test_balanced_visible_frames_with_log_truncation_require_recovery(tracked_engine):
     e = tracked_engine
     n = payload(wire())
     n["params"]["result"]["value"]["logs"].append("Log truncated")
     e.onchain.receive(n)
     assert e.onchain.health["balanced_log_truncation_gaps"] == 1
-    assert e.onchain.health["global_reset_reasons"]["log_truncation"] == 1
+    assert e.onchain.health["global_reset_reasons"]["log_truncation"] == 0
+    assert len(e.recovery.pending) == 1
     assert e.onchain.health["decoding_errors"] == 0
     assert all(e.trade_status(t) == "PARTIAL" for t in e.tokens.values())
     assert len(e.queue.heap) == 1  # Existing valid structured observations are retained.
@@ -245,6 +246,7 @@ def test_no_visible_event_fast_path_cannot_ignore_explicit_log_truncation(tracke
     logs[1] = "Log truncated"
     e.onchain.receive(n)
     assert e.onchain.health["no_event_log_truncation_gaps"] == 1
-    assert e.onchain.health["global_reset_reasons"]["log_truncation"] == 1
+    assert e.onchain.health["global_reset_reasons"]["log_truncation"] == 0
+    assert len(e.recovery.pending) == 1
     assert not e.queue.heap
     assert all(e.trade_status(t) == "PARTIAL" for t in e.tokens.values())

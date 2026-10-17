@@ -158,7 +158,8 @@ def decode_event(encoded: str) -> tuple[str, dict] | None:
 
 
 class OnchainPumpDiscovery:
-    def __init__(self, submit, url=None, tracked=None, on_gap=None, quote_for=None, on_trade_gap=None):
+    def __init__(self, submit, url=None, tracked=None, on_gap=None, quote_for=None, on_trade_gap=None, on_truncation=None):
+        self.on_truncation = on_truncation
         self.submit = submit
         self.tracked = tracked or (lambda mint: False)
         self.on_gap = on_gap or (lambda: None)
@@ -177,7 +178,7 @@ class OnchainPumpDiscovery:
             "global_continuity_resets": 0,
             "per_token_decode_resets": 0,
             "global_reset_reasons": dict.fromkeys(("transport", "shutdown", "unknown_trade_identity",
-                                                   "invocation_framing", "outer_notification", "event_decode", "log_truncation"), 0),
+                                                   "invocation_framing", "outer_notification", "event_decode", "log_truncation", "truncation_recovery"), 0),
             "framing_failure_details": dict.fromkeys(("depth_mismatch", "unbalanced_finish",
                                                      "unfinished_invocations", "other"), 0),
             "log_truncation_notifications": 0,
@@ -250,6 +251,7 @@ class OnchainPumpDiscovery:
         """Synchronous bounded decode/submit, independent of HTTP RPC availability."""
         self.health["messages"] += 1
         self.health["last_success"] = time.time()
+        recovering = False
         try:
             if not isinstance(payload, dict) or payload.get("method") != "logsNotification":
                 self.health["ignored_events"] += 1
@@ -271,13 +273,17 @@ class OnchainPumpDiscovery:
                 raise ValueError("invalid logs")
             log_truncated = any(line == "Log truncated" for line in logs)
             self.health["log_truncation_notifications"] += log_truncated
+            signature = str(Signature.from_string(value["signature"]))
+            if log_truncated and self.on_truncation is not None:
+                self.on_truncation(signature, slot, time.time())
+                recovering = True
             if not any(line.startswith("Program data: ") for line in logs):
                 if log_truncated:
                     self.health["no_event_log_truncation_gaps"] += 1
-                    self.global_gap("log_truncation")
+                    if not recovering:
+                        self.global_gap("log_truncation")
                 self.health["ignored_events"] += 1
                 return
-            signature = str(Signature.from_string(value["signature"]))
             # Stage events inside invocation frames. A caught failed CPI must not
             # supply evidence, even if the overall transaction later succeeds.
             frames: list[tuple[str, list]] = []
@@ -317,12 +323,14 @@ class OnchainPumpDiscovery:
                         self.record_decode_failure(name, exc)
                         if name == "TradeEvent" and mint is not None:
                             self.health["tracked_trade_decode_failures"] += 1
-                            self.health["per_token_decode_resets"] += 1
-                            self.on_trade_gap(mint)
+                            if not recovering:
+                                self.health["per_token_decode_resets"] += 1
+                                self.on_trade_gap(mint)
                         else:
                             if name == "TradeEvent":
                                 self.health["unknown_mint_decode_failures"] += 1
-                            self.global_gap("unknown_trade_identity" if name == "TradeEvent" else "event_decode")
+                            if not recovering:
+                                self.global_gap("unknown_trade_identity" if name == "TradeEvent" else "event_decode")
                         # Preserve ordinal even for a supported malformed event.
                         if name in FAILURE_EVENTS[:3]:
                             frames[-1][1].append((name, {"_invalid": True}))
@@ -335,7 +343,8 @@ class OnchainPumpDiscovery:
                 # Visible frames can balance despite omitted logs. Keep the existing
                 # decoded create/migration behavior, but never claim complete flow.
                 self.health["balanced_log_truncation_gaps"] += 1
-                self.global_gap("log_truncation")
+                if not recovering:
+                    self.global_gap("log_truncation")
             if not decoded:
                 self.health["ignored_events"] += 1
                 return
@@ -429,7 +438,8 @@ class OnchainPumpDiscovery:
             if failure.reason == "invocation_framing":
                 key = "framing_with_log_truncation" if any(line == "Log truncated" for line in logs) else "framing_without_log_truncation"
                 self.health[key] += 1
-            self.global_gap(failure.reason if failure.reason == "invocation_framing" else "outer_notification")
+            if not recovering:
+                self.global_gap(failure.reason if failure.reason == "invocation_framing" else "outer_notification")
 
     async def run(self):
         if not self.health["enabled"]:

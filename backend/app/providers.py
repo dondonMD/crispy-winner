@@ -58,7 +58,7 @@ class HttpProvider:
     def request_failed(self):
         self.health["connected"] = False
 
-    async def request(self, method, url, retry_attempts=3, **kwargs):
+    async def request(self, method, url, retry_attempts=3, accounting=None, **kwargs):
         retry_attempts = min(3, max(1, retry_attempts))
         for attempt in range(retry_attempts):
             async with self.limiter.semaphore:
@@ -72,6 +72,8 @@ class HttpProvider:
                     raise RuntimeError("RPC pressure cooldown")
                 self.health.update(attempted=True, last_attempt=time.time())
                 self.health["requests"] += 1
+                if accounting is not None:
+                    accounting["requests"] += 1
                 started = time.monotonic()
                 try:
                     async with self.client.stream(method, url, **kwargs) as response:
@@ -92,6 +94,9 @@ class HttpProvider:
                                 except (KeyError, ValueError, TypeError):
                                     delay = 2
                             self.health["rate_limits"] += 1
+                            if accounting is not None:
+                                accounting["rate_limits"] += 1
+                                accounting["errors"] += 1
                             self.health["rate_limited_until"] = time.time() + delay
                             self.health["errors"] += 1
                             self.health["connected"] = False
@@ -113,6 +118,8 @@ class HttpProvider:
                             )
                             return data
                 except (httpx.HTTPError, ValueError) as exc:
+                    if accounting is not None:
+                        accounting["errors"] += 1
                     self.health["errors"] += 1
                     self.request_failed()
                     # Avoid URLs in logs: optional keys live in URL query strings.
@@ -143,6 +150,7 @@ class SolanaProvider(HttpProvider):
         self.healthy_since = 0.0
         self.healthy_requests = 0
         self.url = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
+        self.truncation_metrics = dict.fromkeys(("requests", "successful_requests", "errors", "rate_limits"), 0)
         self.global_cache = None
         self.global_cached_at = 0.0
 
@@ -185,22 +193,28 @@ class SolanaProvider(HttpProvider):
             self.healthy_since = now
             self.healthy_requests = 0
 
-    async def rpc(self, method, params, retry_attempts=3):
+    async def rpc(self, method, params, retry_attempts=3, purpose="monitoring"):
         if not self.eligible():
             raise RuntimeError("RPC pressure cooldown")
         self.limiter.interval = self.interval(0.5, "security")
+        accounting = self.truncation_metrics if purpose == "truncation" else None
         data = await self.request(
             "POST",
             self.url,
             json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
+            accounting=accounting,
             retry_attempts=1,  # Return failures to the shared scheduler, never amplify pressure.
         )
-        if "error" in data or "result" not in data:
+        if not isinstance(data, dict) or "error" in data or "result" not in data:
+            if accounting is not None:
+                accounting["errors"] += 1
             self.health["connected"] = False
             self.health["errors"] += 1
             self.request_failed()
             raise RuntimeError("RPC returned an error or missing result")
         self.request_succeeded()
+        if accounting is not None:
+            accounting["successful_requests"] += 1
         return data["result"]
 
     async def curve_progress_batch(self, mints, batch_size=25, retry_attempts=3):

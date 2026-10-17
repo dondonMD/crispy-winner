@@ -64,7 +64,7 @@ Research retention and the existing database cap can limit future coverage; moni
 
 ## Discovery availability
 
-PumpPortal is optional and disabled by default. Configure SOLANA_WS_URL for standard Solana Pump log discovery. Without a connected source, no real launches can be observed and health reports unavailable. Supported canonical logs only: no HTTP fallback, outage backfill or guaranteed complete coverage. Creation metadata does not verify security or imply price. Missing migration logs do not imply graduation. Provider quotas and network restrictions still apply. See [on-chain discovery](providers/onchain-discovery.md).
+PumpPortal is optional and disabled by default. Configure SOLANA_WS_URL for standard Solana Pump log discovery. Without a connected source, no real launches can be observed and health reports unavailable. Supported canonical logs with targeted standard getTransaction identity recovery only for explicit truncations; no general outage backfill or guaranteed complete coverage. Creation metadata does not verify security or imply price. Missing migration logs do not imply graduation. Provider quotas and network restrictions still apply. See [on-chain discovery](providers/onchain-discovery.md).
 
 
 ## Pump TradeEvent coverage
@@ -81,3 +81,20 @@ Timing/size clustering indicates possible coordination, never common ownership.
 Strong flow neither verifies security nor proves profitability or trading edge.
 Continuity is session-local; existing replay can report differences when original
 transport coverage or asynchronous queue-loss context is not reproduced.
+
+
+## Explicit log-truncation recovery
+
+Standard getTransaction identifies affected tracked mints; it does not backfill
+executed trade amounts, create/migration evidence or provider outages. Pending
+recovery blocks CURRENT without prematurely destroying prior coverage. Confirmed
+tracked impact still restarts that token's required clean window. Unresolved or
+unsupported instructions/transactions and recovery overflow remain global gaps.
+Legacy/v0/v1 compiled transaction messages are supported. Multi-hop curve swaps
+remain unsupported. Missing inner-instruction metadata cannot prove completeness.
+Standard RPC recovery consumes existing provider quota and may defer other work
+under adaptive pressure. At most 32 recoveries, one request in flight, three attempts
+and 10,000 dedup identities are retained; no raw transactions are stored. Queue lag,
+20-second freshness, units, real tracked truncations and transport outages can still
+prevent CURRENT. A preserved timer during pending recovery does not imply CURRENT.
+The original 180-second standard and every strategy/security/economics gate remain.

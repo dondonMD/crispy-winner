@@ -20,6 +20,7 @@ from backend.app.evaluation import OutcomeCollector, evaluate, strategy_version
 from backend.app.features import calculate_features, score_token
 from backend.app.paper import PaperAccount
 from backend.app.providers import DexScreenerProvider, PumpPortalProvider, SolanaProvider
+from backend.app.truncation import TruncationRecovery
 from backend.app.resources import ResourceMonitor
 from backend.app.intelligence import Intelligence
 
@@ -63,7 +64,7 @@ class RadarEngine:
         self.processed = 0
         self.trade_observations = {"buy": 0, "sell": 0}
         self.trade_continuity: dict[str, Any] = {"global_resets": 0, "per_token_resets": 0,
-                                 "per_token_reasons": dict.fromkeys(("decode", "stale", "queue", "buffer"), 0)}
+                                 "per_token_reasons": dict.fromkeys(("decode", "stale", "queue", "buffer", "recovery"), 0)}
         self.out_of_order = 0
         self.duplicates = 0
         self.rejected_payloads = 0
@@ -73,14 +74,19 @@ class RadarEngine:
             settings, self.submit, self.deep_mints, require_key=not offline,
             enabled=os.getenv("PUMPPORTAL_ENABLED", "false").lower() == "true",
         )
+        self.onchain: OnchainPumpDiscovery
+        self.recovery = TruncationRecovery(
+            self.rpc, lambda mint: mint in self.tokens, self.invalidate_token_trade_coverage,
+            lambda: self.onchain.global_gap("truncation_recovery"), self.refresh_trade_continuity,
+        )
         self.onchain = OnchainPumpDiscovery(
             self.submit, tracked=lambda mint: mint in self.tokens, on_gap=self.invalidate_trade_coverage,
-            on_trade_gap=self.invalidate_token_trade_coverage,
+            on_trade_gap=self.invalidate_token_trade_coverage, on_truncation=self.recovery.submit,
             quote_for=lambda mint: self.tokens[mint].verified_quote_mint if mint in self.tokens else ""
         )
         self.discovery_providers: list[DiscoveryProvider] = [self.onchain, self.pump]
         self.lab: dict = {"holdout": {"count": 0, "status": "UNVALIDATED"}, "sample_count": 0}
-        self.approved_evidence = None
+        self.approved_evidence: dict | None = None
         for row in reversed(self.db.rows("evidence", limit=1000)):
             if row.get("version") == self.version and (
                 (row.get("mode") == "DEMO") == (settings.mode == "DEMO")
@@ -465,11 +471,7 @@ class RadarEngine:
         if self.settings.mode != "DEMO":
             if not token.trade_tracking_since:
                 token.trade_tracking_since = now
-            clean = self.trade_coverage_seconds(token, now)
-            for seconds, features in token.features.items():
-                features["coverage_seconds"] = clean
-                features["continuity_valid"] = clean >= int(seconds)
-            token.features["180"]["trade_evidence"] = self.trade_status(token, now)
+            self.refresh_trade_continuity(token, now)
         token.scores = score_token(token, now)
         holdout = self.lab.get("holdout", {})
         # A descriptive dashboard split is not sufficient approval. Frozen prospective evidence required.
@@ -570,6 +572,8 @@ class RadarEngine:
             self.tasks.append(asyncio.create_task(self.run_demo(), name="demo"))
         else:
             self.tasks.append(asyncio.create_task(self.run_enrichment(), name="enrichment"))
+            if self.onchain.health["enabled"]:
+                self.tasks.append(asyncio.create_task(self.recovery.run(), name="truncation-recovery"))
             for name, provider in zip(("onchain-discovery", "pumpportal"), self.discovery_providers):
                 if provider.health["enabled"]:
                     self.tasks.append(asyncio.create_task(provider.run(), name=name))
@@ -881,7 +885,8 @@ class RadarEngine:
                     mint = self.queue.affected.popleft()
                     if mint in self.tokens:
                         self.tokens[mint].degraded = True
-                for event in self.queue.drain(100):
+                self.queue.sample_depth(now)
+                for event in self.queue.drain(100, self.settings.max_data_age_seconds):
                     self.process(event, now)
                 for token in list(self.tokens.values()):
                     if now - token.last_analysis >= 1:
@@ -1031,6 +1036,18 @@ class RadarEngine:
                 features["continuity_valid"] = False
                 features["trade_evidence"] = "PARTIAL" if features.get("samples") else "UNAVAILABLE"
 
+    def refresh_trade_continuity(self, token=None, now=None):
+        now = time.time() if now is None else now
+        for candidate in ([token] if token is not None else self.tokens.values()):
+            clean = self.trade_coverage_seconds(candidate, now)
+            for seconds, features in candidate.features.items():
+                pending = self.recovery.overlaps(candidate, now, int(seconds))
+                features["coverage_seconds"] = clean
+                features["coverage_state"] = "PENDING RECOVERY" if pending else "OBSERVING"
+                features["continuity_valid"] = clean >= int(seconds) and not pending
+            if "180" in candidate.features:
+                candidate.features["180"]["trade_evidence"] = self.trade_status(candidate, now)
+
     def trade_coverage_seconds(self, token, now):
         health = self.onchain.health
         start = max(health["connected_since"], health["last_decode_gap"], token.trade_tracking_since, token.trade_gap)
@@ -1043,7 +1060,7 @@ class RadarEngine:
             return "CURRENT"
         if not f.get("samples") or not f.get("units_valid"):
             return "UNAVAILABLE"
-        if (self.onchain.health["connected"] and f.get("continuity_valid") and f.get("samples", 0) >= 3
+        if (not self.recovery.overlaps(token, now) and self.onchain.health["connected"] and f.get("continuity_valid") and f.get("samples", 0) >= 3
                 and 0 <= now - token.last_trade <= self.settings.max_data_age_seconds):
             return "CURRENT"
         return "PARTIAL"
@@ -1069,7 +1086,8 @@ class RadarEngine:
         features["trade_evidence"] = self.trade_status(token)
         if self.trade_status(token) != "CURRENT":
             for key in features:
-                if key not in ["volatility_pct", "drawdown_pct", "price_move_pct", "vwap", "currency"]:
+                if key not in ["volatility_pct", "drawdown_pct", "price_move_pct", "vwap", "currency",
+                               "coverage_state", "coverage_seconds", "continuity_valid"]:
                     features[key] = None
             features["trade_evidence"] = self.trade_status(token)
         return features
@@ -1139,8 +1157,11 @@ class RadarEngine:
                 "background_backoff_until": self.background_backoff_until,
                 "queue_size": len(self.queue.heap),
                 "queue_limit": self.queue.maximum,
+                "queue_lag": self.queue.snapshot(now),
+                "truncation_recovery": self.recovery.snapshot(),
                 "dropped_events": self.queue.dropped,
                 "trade_observations": self.trade_observations,
+                "processed_trade_rate": sum(self.trade_observations.values()) / max(1, now - self.queue.created),
                 "trade_continuity": self.trade_continuity,
                 "dropped_trade_events": self.queue.dropped_trades,
                 "dropped_critical_events": self.queue.dropped_critical,

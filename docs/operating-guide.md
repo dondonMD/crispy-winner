@@ -137,7 +137,7 @@ research horizons and the boundary separating this workflow from the strict stra
 
 ## Configure launch discovery
 
-Set SOLANA_WS_URL privately to a standard mainnet Solana WSS endpoint, and SOLANA_RPC_URL to its HTTP endpoint. Helius standard endpoints are supported without enhanced subscriptions. PumpPortal defaults disabled; PUMPPORTAL_ENABLED=true explicitly opts into that optional source. Keep trade_stream_enabled=false. Without configured/connected discovery, the application starts safely but reports unavailable/degraded and cannot discover launches. Inspect Onchain discovery in System Health: connection, messages, decoded creates, ignored/decode errors, duplicates, reconnects and connection age. Discovery makes no HTTP calls. Existing adaptive lifecycle polling remains bounded. See [setup and decoding reference](providers/onchain-discovery.md).
+Set SOLANA_WS_URL privately to a standard mainnet Solana WSS endpoint, and SOLANA_RPC_URL to its HTTP endpoint. Helius standard endpoints are supported without enhanced subscriptions. PumpPortal defaults disabled; PUMPPORTAL_ENABLED=true explicitly opts into that optional source. Keep trade_stream_enabled=false. Without configured/connected discovery, the application starts safely but reports unavailable/degraded and cannot discover launches. Inspect Onchain discovery in System Health: connection, messages, decoded creates, ignored/decode errors, duplicates, reconnects and connection age. Ordinary discovery/trade decoding makes no HTTP calls. Explicit log truncations alone use bounded standard getTransaction identity recovery. Existing adaptive lifecycle polling remains bounded. See [setup and decoding reference](providers/onchain-discovery.md).
 
 
 ## Standard WSS trade flow
@@ -153,7 +153,17 @@ a quiet/outage window is not evidence of zero buyers. PARTIAL flow cannot satisf
 Companion or core gates. Public RPC security can remain UNKNOWN despite strong
 flow. See [canonical schema and bounds](providers/onchain-discovery.md).
 
-For an isolated live probe use `scripts/smoke_observe.py --seconds 240`. Its report
+For an isolated live probe use `scripts/smoke_observe.py --seconds 300`. Its report
 includes aggregate flow examples only for CURRENT candidates, separate loss
 counts, coverage, resources, actions and unchanged paper cash. Reports in `data/`
 remain ignored local artifacts. No real trade is executed or recommended.
+
+
+Explicit `Log truncated` notifications now show PENDING RECOVERY / incomplete while
+standard getTransaction establishes affected mint identities. Untracked confirmation
+preserves clean timers; tracked impact gaps only those mints. Unresolved recovery,
+backlog overflow and transport loss remain global. Watch pending/oldest/peak recovery,
+recovery request/error/429 counts, and queue peak/oldest trade age/stale-while-queued.
+Recovery shares RPC pressure with monitoring and increases HTTP usage only for explicit
+truncations. A growing queue can still prevent fresh evidence; capacity and the
+20-second limit are unchanged. See [recovery semantics and bounds](providers/onchain-discovery.md#targeted-truncation-recovery).

@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 import heapq
 import math
+import time
 from pydantic import BaseModel, Field
 
 
@@ -80,6 +81,14 @@ class PriorityBuffer:
         self.maximum = maximum
         self.heap: list = []
         self.sequence = 0
+        self.created = time.time()
+        self.arrivals: dict[int, float] = {}
+        self.peak_depth = 0
+        self.accepted_trades = 0
+        self.stale_while_queued = 0
+        self.trades_stale_while_queued = 0
+        self.depth_samples: deque[dict] = deque(maxlen=300)
+        self.last_sample = 0.0
         self.dropped = 0
         self.dropped_trades = 0
         self.dropped_critical = 0
@@ -96,11 +105,36 @@ class PriorityBuffer:
                 self.affected.append(event.mint)
                 return False
             removed = heapq.heapreplace(self.heap, item)
+            self.arrivals.pop(removed[1], None)
+            self.record_accept(item)
             self.record_drop(removed[2])
             self.affected.append(removed[2].mint)
             return True
         heapq.heappush(self.heap, item)
+        self.record_accept(item)
         return True
+
+    def record_accept(self, item):
+        self.arrivals[item[1]] = time.time()
+        self.peak_depth = max(self.peak_depth, len(self.heap))
+        self.accepted_trades += item[2].kind == "trade"
+
+    def snapshot(self, now=None):
+        now = time.time() if now is None else now
+        return {"peak_depth": self.peak_depth,
+                "oldest_event_age": max((now - item[2].ts for item in self.heap), default=0),
+                "oldest_trade_age": max((now - item[2].ts for item in self.heap if item[2].kind == "trade"), default=0),
+                "oldest_queue_wait": max((now - at for at in self.arrivals.values()), default=0),
+                "stale_while_queued": self.stale_while_queued,
+                "trades_stale_while_queued": self.trades_stale_while_queued,
+                "accepted_trades": self.accepted_trades,
+                "accepted_trade_rate": self.accepted_trades / max(1, now - self.created),
+                "depth_samples": list(self.depth_samples)}
+
+    def sample_depth(self, now):
+        if now - self.last_sample >= 1:
+            self.depth_samples.append({"seconds": round(now - self.created, 1), "depth": len(self.heap)})
+            self.last_sample = now
 
     def record_drop(self, event):
         import time
@@ -112,9 +146,15 @@ class PriorityBuffer:
         else:
             self.dropped_critical += 1
 
-    def drain(self, limit=100):
+    def drain(self, limit=100, max_age=20):
         # Selected by priority, processed chronologically to preserve feature windows.
         selected = sorted(self.heap, key=lambda x: (-x[0], x[1]))[:limit]
+        now = time.time()
+        for _, sequence, event in selected:
+            arrived = self.arrivals.pop(sequence, now)
+            if abs(arrived - event.ts) <= max_age < now - event.ts:
+                self.stale_while_queued += 1
+                self.trades_stale_while_queued += event.kind == "trade"
         identities = {x[1] for x in selected}
         self.heap = [x for x in self.heap if x[1] not in identities]
         heapq.heapify(self.heap)
