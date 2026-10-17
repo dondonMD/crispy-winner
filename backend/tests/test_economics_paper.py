@@ -28,6 +28,8 @@ def candidate(now=1000):
     t.last_price = t.last_trade = t.last_liquidity = now
     t.features = {
         "180": {
+            "trade_evidence": "CURRENT",
+            "continuity_valid": True,
             "creator_sell_volume": 0,
             "estimated_independent_buyers": 40,
             "units_valid": True,
@@ -163,3 +165,62 @@ def test_atomic_account_memory_rollback(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError):
         paper.request_entry(t, 1000, "v1")
     assert paper.state["cash"] == 20 and not paper.state["pending"]
+
+
+@pytest.mark.parametrize("stream_enabled", [False, True])
+@pytest.mark.parametrize("status", ["CURRENT", "PARTIAL", "UNAVAILABLE", "STALE", None])
+def test_core_trade_evidence_is_provider_agnostic(stream_enabled, status):
+    t = candidate()
+    if status is None:
+        del t.features["180"]["trade_evidence"]
+    else:
+        t.features["180"]["trade_evidence"] = status
+    settings = Settings(mode="OBSERVE", trade_stream_enabled=stream_enabled)
+    result = evaluate_candidate(t, settings, 1000, evidence=evidence())
+    assert result["decision"] == ("ALLOW_PAPER_ENTRY" if status == "CURRENT" else "WAIT")
+    assert ("Current continuous trade/buyer evidence required" in result["reasons"]) == (status != "CURRENT")
+    assert not any("Trade stream unavailable" in reason for reason in result["reasons"])
+
+
+@pytest.mark.parametrize("gate", ["security", "graduation", "post_grad", "market", "economics", "history",
+                                 "units", "continuity", "freshness", "buyers"])
+def test_current_onchain_trade_evidence_preserves_other_core_gates(gate):
+    t = candidate()
+    settings = Settings(mode="OBSERVE", trade_stream_enabled=False)
+    history = evidence()
+    if gate == "security":
+        t.security["data_quality"] = "UNKNOWN"
+    elif gate == "graduation":
+        t.graduation = None
+    elif gate == "post_grad":
+        t.graduation = 1000
+    elif gate == "market":
+        t.liquidity = None
+    elif gate == "economics":
+        t.viability = {}
+    elif gate == "history":
+        history = None
+    elif gate == "units":
+        t.features["180"]["units_valid"] = False
+    elif gate == "continuity":
+        t.features["180"]["continuity_valid"] = False
+    elif gate == "freshness":
+        t.last_trade = 1000 - settings.max_data_age_seconds - 1
+    elif gate == "buyers":
+        t.features["180"]["estimated_independent_buyers"] = settings.min_buyers - 1
+    assert evaluate_candidate(t, settings, 1000, evidence=history)["decision"] == "WAIT"
+
+
+@pytest.mark.parametrize("stream_enabled", [False, True])
+@pytest.mark.parametrize("status", ["CURRENT", "PARTIAL", "UNAVAILABLE"])
+def test_companion_and_core_agree_on_current_trade_evidence(stream_enabled, status):
+    from backend.app.companion import companion_view
+
+    t = candidate()
+    t.features["180"].update(trade_evidence=status, flow_ratio=3.0)
+    settings = Settings(mode="OBSERVE", trade_stream_enabled=stream_enabled)
+    t.decision = evaluate_candidate(t, settings, 1000, evidence=evidence())
+    view = companion_view(t, settings, 1000, evidence=evidence())
+    assert (t.decision["decision"] == "ALLOW_PAPER_ENTRY") == (status == "CURRENT")
+    assert (view.trade_evidence == "CURRENT") == (status == "CURRENT")
+    assert view.action == ("ENTRY_CANDIDATE" if status == "CURRENT" else "WAIT")

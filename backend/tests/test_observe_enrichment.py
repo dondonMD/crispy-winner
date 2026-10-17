@@ -86,7 +86,7 @@ async def test_free_observe_funnel_bounded_and_conservative(tmp_path, progress):
         e.analyse(t, time.time())
         assert t.state == State.NEAR_GRADUATION and t.graduation is None
         assert t.decision["decision"] == "WAIT"
-        assert any("Trade stream unavailable" in r for r in t.decision["reasons"])
+        assert "Current continuous trade/buyer evidence required" in t.decision["reasons"]
         view = e.token_view(t, now)
         assert view["features"]["estimated_independent_buyers"] is None
         assert view["features"]["flow_ratio"] is None

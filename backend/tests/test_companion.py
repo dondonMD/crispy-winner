@@ -63,10 +63,9 @@ def test_stored_entry_is_revalidated(mutation, action):
     assert view.blockers
 
 
-def test_missing_subscription_history_or_health_fail_closed():
+def test_missing_history_or_health_fail_closed():
     t = entry()
     for kwargs in [
-        dict(settings=Settings(mode="OBSERVE")),
         dict(evidence=None),
         dict(healthy=False),
         dict(resource_pressure=True),
