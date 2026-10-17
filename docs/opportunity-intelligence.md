@@ -250,3 +250,11 @@ frontend/src/types.ts
 scripts/smoke_observe.py
 scripts/verify_intelligence.py
 ```
+
+
+Standard Solana WSS TradeEvents can now supply the existing trade component without
+PumpPortal. The component still requires current structured valid-unit flow; the
+on-chain path additionally requires a clean 180-second observation window and at
+least three samples. Partial/unknown flow remains unavailable. Opportunity scoring,
+EARLY_OPPORTUNITY rules and all existing numerical thresholds are unchanged;
+trade availability alone does not force an early opportunity or Companion entry.

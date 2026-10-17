@@ -2,7 +2,7 @@
 
 import asyncio
 import argparse
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 import json
 import sys
 import tempfile
@@ -23,11 +23,12 @@ async def main(seconds=65, max_deep=25):
         curve_attempts = 0
         successes = 0
         launch_count = 0
+        trade_rejections = {"stale": 0, "other": 0}
         states = set()
         background_observations: OrderedDict[str, int] = OrderedDict()
         curve_events = {"hot": 0, "background": 0}
         scan_counts = {"security_attempts": 0, "security_completed": 0, "security_outside_hot": 0}
-        peaks = {"rss_mb": 0.0, "queue_size": 0, "active": 0, "hot": 0, "background": 0}
+        peaks = {"rss_mb": 0.0, "queue_size": 0, "active": 0, "hot": 0, "background": 0, "cpu_pct": 0.0}
         pressure_changes = []
         previous_level = -1
         peak_expiry_deferred = 0
@@ -45,6 +46,9 @@ async def main(seconds=65, max_deep=25):
         def counted_process(event, now=None):
             nonlocal launch_count
             accepted = original_process(event, now)
+            if event.kind == "trade" and not accepted:
+                reason = "stale" if abs((now if now is not None else event.ts) - event.ts) > engine.settings.max_data_age_seconds else "other"
+                trade_rejections[reason] += 1
             if accepted:
                 launch_count += event.kind == "create"
                 states.add(engine.tokens[event.mint].state.value)
@@ -69,6 +73,7 @@ async def main(seconds=65, max_deep=25):
         engine.rpc.curve_progress_batch = counted
         engine.process = counted_process
         initial_db_bytes = engine.db.size()
+        start_cpu = time.process_time()
         start = time.monotonic()
         await engine.start()
         try:
@@ -81,6 +86,7 @@ async def main(seconds=65, max_deep=25):
                 if level != previous_level:
                     pressure_changes.append({"seconds": round(time.monotonic() - start, 1), "level": level})
                     previous_level = level
+                peaks["cpu_pct"] = max(peaks["cpu_pct"], engine.metrics.get("cpu_pct", 0))
                 peaks["rss_mb"] = max(peaks["rss_mb"], engine.metrics.get("rss_mb", 0))
                 peaks["queue_size"] = max(peaks["queue_size"], len(engine.queue.heap))
                 peaks["active"] = max(peaks["active"], len(engine.tokens))
@@ -95,6 +101,23 @@ async def main(seconds=65, max_deep=25):
             companion_view_requests = engine.rpc.health["requests"] - requests_before_views
             elapsed = time.monotonic() - start
             report = {
+                "average_process_cpu_pct": round(100 * (time.process_time() - start_cpu) / elapsed, 2),
+                "bounded_trade_unit_observations": dict(Counter(
+                    f"{event.currency}:{event.evidence.get('quote_source', 'unknown')}"
+                    for token in engine.tokens.values() for event in token.events if event.kind == "trade"
+                )),
+                "trade_evidence_counts": snap["health"]["trade_evidence_counts"],
+                "trade_observations": engine.trade_observations,
+                "trade_process_rejections": trade_rejections,
+                "dropped_trade_events": engine.queue.dropped_trades,
+                "dropped_critical_events": engine.queue.dropped_critical,
+                "clean_wss_coverage_seconds": snap["health"]["clean_wss_coverage_seconds"],
+                "trade_http_requests": engine.onchain.health["http_requests"],
+                "flow_examples": [
+                    {k: t.features["180"].get(k) for k in
+                     ("buy_count", "sell_count", "estimated_independent_buyers", "flow_ratio", "whale_share")}
+                    for t in engine.tokens.values() if engine.trade_status(t) == "CURRENT"
+                ][:5],
                 "elapsed_seconds": round(elapsed, 2),
                 "configured_hot_limit": max_deep,
                 "launches": launch_count,

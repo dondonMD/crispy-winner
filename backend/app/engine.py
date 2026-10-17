@@ -60,6 +60,7 @@ class RadarEngine:
         self.tasks = []
         self.running = False
         self.processed = 0
+        self.trade_observations = {"buy": 0, "sell": 0}
         self.out_of_order = 0
         self.duplicates = 0
         self.rejected_payloads = 0
@@ -69,7 +70,10 @@ class RadarEngine:
             settings, self.submit, self.deep_mints, require_key=not offline,
             enabled=os.getenv("PUMPPORTAL_ENABLED", "false").lower() == "true",
         )
-        self.onchain = OnchainPumpDiscovery(self.submit)
+        self.onchain = OnchainPumpDiscovery(
+            self.submit, tracked=lambda mint: mint in self.tokens, on_gap=self.invalidate_trade_coverage,
+            quote_for=lambda mint: self.tokens[mint].verified_quote_mint if mint in self.tokens else ""
+        )
         self.discovery_providers: list[DiscoveryProvider] = [self.onchain, self.pump]
         self.lab: dict = {"holdout": {"count": 0, "status": "UNVALIDATED"}, "sample_count": 0}
         self.approved_evidence = None
@@ -179,7 +183,19 @@ class RadarEngine:
         priority = token.priority()[0] if token else 5
         if event.kind in ["migration", "security"]:
             priority = 110
-        return self.queue.put(event, priority)
+        if event.kind == "create":
+            priority = 105
+        if event.kind == "trade":
+            priority = min(80, priority)
+        accepted = self.queue.put(event, priority)
+        for mint, stamp in self.queue.trade_gaps.items():
+            if mint in self.tokens:
+                self.tokens[mint].trade_gap = stamp
+                for features in self.tokens[mint].features.values():
+                    features["continuity_valid"] = False
+                    features["trade_evidence"] = "PARTIAL" if features.get("samples") else "UNAVAILABLE"
+        self.queue.trade_gaps.clear()
+        return accepted
 
     def alert(self, level, mint, message, now):
         key = (level, mint)
@@ -227,6 +243,7 @@ class RadarEngine:
             del self.tokens[weakest.mint]
         token = Token(event.mint, event.name, event.symbol, event.ts, event.creator)
         token.events = deque(maxlen=self.settings.max_events)
+        token.trade_tracking_since = time.time() if self.settings.mode != "DEMO" else 0
         self.tokens[event.mint] = token
         self.transition(token, State.SCREENING, "Discovery received", event.ts)
         self.transition(token, State.WATCHING, "Cheap activity screening", event.ts)
@@ -237,7 +254,11 @@ class RadarEngine:
         if event.source == "DEMO" and self.settings.mode != "DEMO":
             self.rejected_payloads += 1
             return False
+        if event.kind == "trade" and event.source == "Solana WSS" and event.mint not in self.tokens:
+            return False
         if abs(now - event.ts) > self.settings.max_data_age_seconds:
+            if event.kind == "trade" and event.mint in self.tokens:
+                self.tokens[event.mint].trade_gap = now
             self.rejected_payloads += 1
             return False
         if not self.dedup.accept(event.event_id):
@@ -267,11 +288,11 @@ class RadarEngine:
         token = self.tokens.get(event.mint) or self.admit(event)
         if token is None:
             return False
-        if event.ts < token.last_event:
+        if event.ts < token.last_event and not (event.kind == "trade" and event.source == "Solana WSS"):
             token.degraded = True
             self.out_of_order += 1
             return False
-        token.last_event = event.ts
+        token.last_event = max(token.last_event, event.ts)
         if token.creator:
             from backend.app.creator import CreatorRiskProfile
 
@@ -285,6 +306,14 @@ class RadarEngine:
         if event.kind == "create":
             token.launch_metadata = event.evidence.get("launch_metadata", {})
         if event.kind == "curve":
+            curve = event.evidence.get("bonding_curve") or {}
+            if event.evidence.get("data_quality") == "VERIFIED" and curve.get("quote_mint"):
+                quote = curve["quote_mint"]
+                # Official BondingCurve schema: default quote mint means native SOL.
+                token.verified_quote_mint = (
+                    "So11111111111111111111111111111111111111112"
+                    if quote == "11111111111111111111111111111111" else quote
+                )
             token.curve_progress = event.evidence.get("curve_progress")
             token.last_curve = event.ts
         if event.kind == "security":
@@ -305,8 +334,12 @@ class RadarEngine:
                     "So11111111111111111111111111111111111111112": "SOL",
                     "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": "USDC",
                 }.get(quote or "", "unknown")
-            token.last_trade = event.ts
+            token.last_trade = max(token.last_trade, event.ts)
         if event.kind in ["trade", "market"]:
+            if len(token.events) == token.events.maxlen and token.events:
+                oldest = token.events[0]
+                if oldest.kind == "trade" and event.ts - oldest.ts < 180:
+                    token.trade_gap = now
             token.events.append(event)
         if event.price is not None:
             token.price = event.price
@@ -412,20 +445,32 @@ class RadarEngine:
                     "maturity": token.scores["maturity"],
                     "momentum": token.scores["momentum"],
                     "buyers": token.features["180"]["estimated_independent_buyers"]
-                    if self.trade_evidence_available()
+                    if self.trade_status(token, event.ts) == "CURRENT"
                     else None,
                     "net_flow": token.features["180"]["net_flow"]
-                    if self.trade_evidence_available()
+                    if self.trade_status(token, event.ts) == "CURRENT"
                     else None,
                 }
             )
         self.intelligence.observe(token, event.ts)
         self.processed += 1
+        if event.kind == "trade":
+            self.trade_observations[event.side] = self.trade_observations.get(event.side, 0) + 1
         return True
 
     def analyse(self, token, now):
         token.last_analysis = now
         token.features = calculate_features(token, now)
+        if self.settings.mode != "DEMO":
+            if not token.trade_tracking_since:
+                token.trade_tracking_since = now
+            health = self.onchain.health
+            start = max(health["connected_since"], health["last_decode_gap"], token.trade_tracking_since, token.trade_gap)
+            clean = max(0, now - start) if health["connected"] else 0
+            for seconds, features in token.features.items():
+                features["coverage_seconds"] = clean
+                features["continuity_valid"] = clean >= int(seconds)
+            token.features["180"]["trade_evidence"] = self.trade_status(token, now)
         token.scores = score_token(token, now)
         holdout = self.lab.get("holdout", {})
         # A descriptive dashboard split is not sufficient approval. Frozen prospective evidence required.
@@ -924,7 +969,7 @@ class RadarEngine:
             "scores": self.display_scores(token),
             "features": self.display_features(token),
             "launch_metadata": token.launch_metadata,
-            "trade_evidence": "UNAVAILABLE" if not self.trade_evidence_available() else "OBSERVED_ONLY",
+            "trade_evidence": self.trade_status(token),
             "curve_observed_at": token.last_curve or None,
             "curve_peak_progress": token.curve_peak_progress,
             "curve_data_quality": "UNKNOWN"
@@ -966,13 +1011,33 @@ class RadarEngine:
 
         return companion_examples(self.settings, now)
 
+    def invalidate_trade_coverage(self):
+        # Called only on gaps, never per unrelated WSS trade. State is bounded by candidates.
+        for token in self.tokens.values():
+            token.trade_gap = time.time()
+            for features in token.features.values():
+                features["continuity_valid"] = False
+                features["trade_evidence"] = "PARTIAL" if features.get("samples") else "UNAVAILABLE"
+
+    def trade_status(self, token, now=None):
+        now = time.time() if now is None else now
+        f = token.features.get("180", {})
+        if self.settings.mode == "DEMO":
+            return "CURRENT"
+        if not f.get("samples") or not f.get("units_valid"):
+            return "UNAVAILABLE"
+        if (self.onchain.health["connected"] and f.get("continuity_valid") and f.get("samples", 0) >= 3
+                and 0 <= now - token.last_trade <= self.settings.max_data_age_seconds):
+            return "CURRENT"
+        return "PARTIAL"
+
     def trade_evidence_available(self):
-        return self.settings.mode == "DEMO" or self.settings.trade_stream_enabled
+        return self.settings.mode == "DEMO" or self.settings.trade_stream_enabled or self.onchain.health["enabled"]
 
     def display_scores(self, token):
         scores = dict(token.scores)
-        scores["trade_evidence"] = "OBSERVED_ONLY" if self.trade_evidence_available() else "UNAVAILABLE"
-        if not self.trade_evidence_available():
+        scores["trade_evidence"] = self.trade_status(token)
+        if self.trade_status(token) != "CURRENT":
             for group in ["maturity_components", "momentum_components"]:
                 scores[group] = {
                     key: value
@@ -984,11 +1049,12 @@ class RadarEngine:
 
     def display_features(self, token):
         features = dict(token.features.get("180", {}))
-        if not self.trade_evidence_available():
+        features["trade_evidence"] = self.trade_status(token)
+        if self.trade_status(token) != "CURRENT":
             for key in features:
                 if key not in ["volatility_pct", "drawdown_pct", "price_move_pct", "vwap", "currency"]:
                     features[key] = None
-            features["trade_evidence"] = "UNAVAILABLE"
+            features["trade_evidence"] = self.trade_status(token)
         return features
 
     @staticmethod
@@ -1057,6 +1123,13 @@ class RadarEngine:
                 "queue_size": len(self.queue.heap),
                 "queue_limit": self.queue.maximum,
                 "dropped_events": self.queue.dropped,
+                "trade_observations": self.trade_observations,
+                "dropped_trade_events": self.queue.dropped_trades,
+                "dropped_critical_events": self.queue.dropped_critical,
+                "clean_wss_coverage_seconds": max(0, time.time() - max(self.onchain.health["connected_since"], self.onchain.health["last_decode_gap"]))
+                    if self.onchain.health["connected"] else 0,
+                "trade_evidence_counts": {status: sum(self.trade_status(t) == status for t in self.tokens.values())
+                    for status in ("CURRENT", "PARTIAL", "UNAVAILABLE")},
                 "processed_events": self.processed,
                 "duplicates": self.duplicates,
                 "out_of_order": self.out_of_order,

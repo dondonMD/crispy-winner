@@ -213,7 +213,9 @@ def opportunity_view(
     )
     features = token.features.get("180", {})
     trade = (
-        settings.trade_stream_enabled
+        (settings.trade_stream_enabled or features.get("trade_evidence") == "CURRENT")
+        and features.get("continuity_valid", True)
+        and features.get("trade_evidence", "CURRENT") == "CURRENT"
         and current(token.last_trade, now, settings.max_data_age_seconds)
         and features.get("units_valid") is True
         and all(

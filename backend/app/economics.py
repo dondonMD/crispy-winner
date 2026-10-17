@@ -195,7 +195,8 @@ def evaluate_candidate(token, settings, now, healthy=True, resource_pressure=Fal
             waits.append("Pullback/stabilisation/renewed buying not established")
     if features.get("estimated_independent_buyers", 0) < settings.min_buyers:
         waits.append("Insufficient independent buyer evidence")
-    if not features.get("units_valid"):
+    if (not features.get("units_valid") or not features.get("continuity_valid", True)
+            or features.get("trade_evidence", "CURRENT") != "CURRENT"):
         waits.append("Trade volume units unavailable/inconsistent")
     if token.scores.get("maturity", 0) < settings.min_maturity:
         waits.append("Maturity below threshold")

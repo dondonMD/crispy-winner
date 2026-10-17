@@ -26,7 +26,7 @@ def window_features(events, now, seconds, creator=""):
     buy_volume, sell_volume = sum(volumes), sum(e.volume for e in sells)
     total = buy_volume + sell_volume
     currency = {e.currency for e in trades}
-    consistent_units = len(currency) <= 1 and "unknown" not in currency
+    consistent_units = bool(trades) and len(currency) == 1 and "unknown" not in currency
     recent = sum(e.volume if e.side == "buy" else -e.volume for e in trades if now - e.ts <= seconds / 2)
     previous = sum(e.volume if e.side == "buy" else -e.volume for e in trades if now - e.ts > seconds / 2)
     priced = [e for e in events if e.price is not None and 0 <= now - e.ts <= seconds]

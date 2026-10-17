@@ -4,7 +4,7 @@ Start DEMO to inspect all twelve scenario families offline. SIMULATED DATA is pr
 
 OBSERVE is the default: outbound public APIs only, no wallet. The Radar prioritizes candidates rather than every chain launch. Open a token for risk reasons, individual costs and charts. Unknown/stale information is visible. System Health includes provider connectivity, rate-limit state in the API, RAM/CPU, queue drops and storage warnings.
 
-For optional trade observations, explicitly enable PUMPPORTAL_ENABLED=true and set PUMPPORTAL_API_KEY privately and trade_stream_enabled: true in YAML, after reviewing provider charges. This is a data-provider credential; no wallet secret is requested by this application. Never paste keys into a tracked file. You can instead supply SOLANA_RPC_URL for an optional Helius/custom standard RPC endpoint.
+Standard Solana WSS supplies free tracked Pump trade observations when units and continuity are verified. For optional PumpPortal trade observations, explicitly enable PUMPPORTAL_ENABLED=true and set PUMPPORTAL_API_KEY privately and trade_stream_enabled: true in YAML, after reviewing provider charges. This is a data-provider credential; no wallet secret is requested by this application. Never paste keys into a tracked file. You can instead supply SOLANA_RPC_URL for an optional Helius/custom standard RPC endpoint.
 
 PAPER uses real data and the durable $20 ledger. It will not force trades. Use evaluate before interpreting scores. A strategy must have sufficiently many complete first-eligible signal outcomes and positive later validation/holdout evidence. `freeze-evidence` explicitly records the current historical result for that strategy version, then restart to load it. Read methodology limitations first. This is research approval for simulated entries, not permission to trade real money.
 
@@ -15,8 +15,9 @@ Stop with Ctrl+C before manual database optimization or updates. Back up data/ra
 ## Free OBSERVE monitoring
 
 Keep `trade_stream_enabled: false` for free discovery, verified bounded bonding-curve progress,
-selective security analysis and migration notifications. Buyer breadth, flow, synchrony and
-trade-dependent momentum components display — / unavailable. Zero observed events is not proof
+selective security analysis and migration notifications. With standard `SOLANA_WS_URL`, tracked Pump TradeEvents supply buyer breadth, flow and synchrony
+when quote units and a clean 180-second window are established. Until then these fields
+display — / unavailable or PARTIAL. Zero observed events is not proof
 of zero buyers. Launch fields (`bondingCurveKey`, `initialBuy`, `marketCapSol`, `vSolInBondingCurve`,
 `vTokensInBondingCurve`) are retained as unverified snapshots without assuming undocumented units
 or converting SOL to USD. On-chain parsers supply lifecycle evidence.
@@ -137,3 +138,22 @@ research horizons and the boundary separating this workflow from the strict stra
 ## Configure launch discovery
 
 Set SOLANA_WS_URL privately to a standard mainnet Solana WSS endpoint, and SOLANA_RPC_URL to its HTTP endpoint. Helius standard endpoints are supported without enhanced subscriptions. PumpPortal defaults disabled; PUMPPORTAL_ENABLED=true explicitly opts into that optional source. Keep trade_stream_enabled=false. Without configured/connected discovery, the application starts safely but reports unavailable/degraded and cannot discover launches. Inspect Onchain discovery in System Health: connection, messages, decoded creates, ignored/decode errors, duplicates, reconnects and connection age. Discovery makes no HTTP calls. Existing adaptive lifecycle polling remains bounded. See [setup and decoding reference](providers/onchain-discovery.md).
+
+
+## Standard WSS trade flow
+
+Keep `PUMPPORTAL_ENABLED=false` and `trade_stream_enabled: false`; the latter
+controls the optional paid PumpPortal stream, not standard Solana logs. No separate
+per-token subscription, account lookup for units, or HTTP trade polling is used.
+System Health distinguishes decoded trades, tracked accepted trades, ignored
+untracked trades, invalid units, duplicates, and trade versus critical drops.
+Token evidence requires 180 clean seconds, valid consistent quote units, three
+samples and the existing freshness limit. A reconnect starts the window again;
+a quiet/outage window is not evidence of zero buyers. PARTIAL flow cannot satisfy
+Companion or core gates. Public RPC security can remain UNKNOWN despite strong
+flow. See [canonical schema and bounds](providers/onchain-discovery.md).
+
+For an isolated live probe use `scripts/smoke_observe.py --seconds 240`. Its report
+includes aggregate flow examples only for CURRENT candidates, separate loss
+counts, coverage, resources, actions and unchanged paper cash. Reports in `data/`
+remain ignored local artifacts. No real trade is executed or recommended.

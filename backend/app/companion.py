@@ -69,7 +69,9 @@ def companion_view(
     )
     security_quality = quality if security_current or quality == "UNKNOWN" else "STALE"
     features = token.features.get("180", {})
-    structured_trade = features.get("units_valid") is True and all(
+    structured_trade = (features.get("units_valid") is True
+                        and features.get("continuity_valid", True)
+                        and features.get("trade_evidence", "CURRENT") == "CURRENT") and all(
         isinstance(value, (int, float))
         and not isinstance(value, bool)
         and math.isfinite(value)
@@ -81,7 +83,9 @@ def companion_view(
         if core == "ALLOW_PAPER_ENTRY" and structured_trade
         else {"decision": "WAIT", "reasons": token.decision.get("reasons", [])}
     )
-    trade_current = structured_trade and (settings.mode == "DEMO" or settings.trade_stream_enabled) and (
+    trade_provider = (settings.mode == "DEMO" or settings.trade_stream_enabled
+                      or features.get("trade_evidence") == "CURRENT")
+    trade_current = structured_trade and trade_provider and (
         token.last_trade > 0 and 0 <= now - token.last_trade <= settings.max_data_age_seconds
     )
     market_current = all(
@@ -180,7 +184,7 @@ def companion_view(
         trade_evidence="CURRENT"
         if trade_current
         else "UNAVAILABLE"
-        if not structured_trade or not (settings.mode == "DEMO" or settings.trade_stream_enabled)
+        if not structured_trade or not trade_provider
         else "STALE / UNKNOWN",
         security_quality=security_quality,
         security_risk_score=security.get("risk_score") if security_current else None,

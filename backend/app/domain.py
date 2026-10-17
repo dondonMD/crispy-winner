@@ -81,6 +81,9 @@ class PriorityBuffer:
         self.heap: list = []
         self.sequence = 0
         self.dropped = 0
+        self.dropped_trades = 0
+        self.dropped_critical = 0
+        self.trade_gaps: dict[str, float] = {}
         self.affected: deque[str] = deque(maxlen=1000)
 
     def put(self, event, priority):
@@ -89,13 +92,25 @@ class PriorityBuffer:
         if len(self.heap) >= self.maximum:
             self.dropped += 1
             if priority <= self.heap[0][0]:
+                self.record_drop(event)
                 self.affected.append(event.mint)
                 return False
             removed = heapq.heapreplace(self.heap, item)
+            self.record_drop(removed[2])
             self.affected.append(removed[2].mint)
             return True
         heapq.heappush(self.heap, item)
         return True
+
+    def record_drop(self, event):
+        import time
+        if event.kind == "trade":
+            self.dropped_trades += 1
+            self.trade_gaps[event.mint] = time.time()
+            if len(self.trade_gaps) > self.maximum:
+                del self.trade_gaps[next(iter(self.trade_gaps))]
+        else:
+            self.dropped_critical += 1
 
     def drain(self, limit=100):
         # Selected by priority, processed chronologically to preserve feature windows.
@@ -126,6 +141,9 @@ class Token:
     )
     last_event: float = 0
     last_trade: float = 0
+    verified_quote_mint: str = ""
+    trade_gap: float = 0
+    trade_tracking_since: float = 0
     last_price: float = 0
     last_liquidity: float = 0
     last_market_cap: float = 0

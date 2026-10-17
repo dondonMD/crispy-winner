@@ -74,8 +74,10 @@ selling can return a token to MATURING without flapping around 85%. Current and 
 progress are displayed separately; historical peaks do not set current priority.
 **Near graduation describes lifecycle, not investment quality or BUY**. Progress does not raise
 maturity, momentum, or buyer-quality scores. Selective full security scans start at verified 60%
-progress or migration. Missing trade subscriptions show buyer/flow metrics as unavailable and
-explicitly block entries. Background sweeps never run security scans, DEX queries or trade subscriptions.
+progress or migration. Standard Solana WSS also supplies tracked canonical Pump trades without
+PumpPortal or HTTP trade polling. Buyer/flow evidence requires verified quote units and a clean
+180-second observation window; unknown/partial flow remains unavailable to entry gates.
+See [trade evidence and limits](docs/providers/onchain-discovery.md). Background sweeps never run security scans, DEX queries or trade subscriptions.
 DEX is queried only for migrated deep candidates.
 
 HTTP provider health starts **NOT USED YET**, becomes **CURRENT** after successful activity,

@@ -1,9 +1,9 @@
 # Known limitations
 
 - No profitability claim, wallet, autonomous live trading, private key, manipulation, front-running or private order flow.
-- Free discovery/migrations work without a key in the verified probe. Wallet-level trade streams are now metered by PumpPortal and explicitly opt-in; no free substitute for buyer breadth is invented. Without them buyer/flow fields are unavailable and real entries are explicitly blocked.
+- Standard Solana WSS can supply free canonical Pump bonding-curve trade evidence for tracked mints. It requires explicit supported quote units and clean continuity; unknown/partial evidence remains unavailable to gates. Paid PumpPortal remains optional and disabled by default.
 - The default RPC is public and may throttle. DEX data is indexed, not tick-accurate. Receive timestamps do not establish on-chain event age or guarantee low latency. Market gaps make outcomes unavailable.
-- The probe verified 19 launch events, RPC supply and DEX connectivity; it did not claim a live graduation was witnessed or validate the funded trade stream. Those paths have deterministic fixtures/tests. No funded account was supplied.
+- Live probe results are run-specific; see [trade validation](pump-trade-validation.md). Short runs do not validate a funded stream, complete coverage, profitability or edge. No funded account was supplied.
 - Creator identity is provider-reported, not cryptographically linked ownership. Current creator fee recipients can change. Recent creator history is bounded to observed launches, not exhaustive.
 - Largest-account distribution is limited to top 20, grouped by wallet; concentration across many smaller accounts may escape detection. Program exclusions require known addresses/verified pools. No full holder census.
 - Timing/size clustering is intentionally conservative and can false-positive. Funding-source/transfer-graph clustering is not implemented; RPC fan-out would be substantial.
@@ -40,7 +40,7 @@
 
 The companion translates current evidence and conservative strategy decisions; it does not establish a validated real-market edge or predict profitability. ENTRY CANDIDATE permits manual review only. Speculative tokens can lose most or all value. Lifecycle progress, session peak, attention and uncalibrated chase scores are not success probabilities.
 
-Free OBSERVE cannot supply buyer breadth/flow without subscribed trade evidence. High-progress or migrated tokens can remain WAIT because security, liquidity, recovery, fresh trade evidence or approved historical evidence is missing. Missing economic values remain unavailable; no calibrated maximum entry, take-profit, stop-loss or pullback price is invented. Pool cost estimates retain their existing approximation limitations.
+Free OBSERVE supplies buyer breadth/flow only from tracked canonical WSS trades with verified quote units and adequate clean continuity. High-progress or migrated tokens can remain WAIT because security, liquidity, recovery, fresh trade evidence or approved historical evidence is missing. Missing economic values remain unavailable; no calibrated maximum entry, take-profit, stop-loss or pullback price is invented. Pool cost estimates retain their existing approximation limitations.
 
 No FOMO deep-link/API contract is assumed. Copy mint and manual search are the complete workflow. Clipboard permissions may fail, with manual copying available. No wallet, private key, transaction, LLM explanation service, telemetry or trading endpoint is added. Optional watchlist and watched-token notifications are deferred UX work; current backend classification and existing entry notifications take priority.
 
@@ -65,3 +65,19 @@ Research retention and the existing database cap can limit future coverage; moni
 ## Discovery availability
 
 PumpPortal is optional and disabled by default. Configure SOLANA_WS_URL for standard Solana Pump log discovery. Without a connected source, no real launches can be observed and health reports unavailable. Supported canonical logs only: no HTTP fallback, outage backfill or guaranteed complete coverage. Creation metadata does not verify security or imply price. Missing migration logs do not imply graduation. Provider quotas and network restrictions still apply. See [on-chain discovery](providers/onchain-discovery.md).
+
+
+## Pump TradeEvent coverage
+
+No outage backfill, guaranteed provider delivery, or PumpSwap post-migration flow.
+CURRENT describes observed continuous connection coverage, not cryptographic proof
+that a provider omitted no logs. Exact-layout validation rejects older or future
+TradeEvent layouts; unknown/default event quote mints are not guessed as SOL; default-key SOL conversion requires an independently verified cached curve; the zero-quote-amount legacy fallback also requires supported legacy instruction semantics. Only WSOL
+and native USDC decimals are established. High-rate tokens that exhaust bounded
+buffers remain partial. Decode gaps, dropped trades and reconnects reset clean
+coverage; this may leave all candidates partial/unavailable on unstable public
+WSS. Three samples establish a minimum evidence structure, not statistical power.
+Timing/size clustering indicates possible coordination, never common ownership.
+Strong flow neither verifies security nor proves profitability or trading edge.
+Continuity is session-local; existing replay can report differences when original
+transport coverage or asynchronous queue-loss context is not reproduced.
