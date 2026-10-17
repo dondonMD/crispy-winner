@@ -21,6 +21,11 @@ async def main(seconds=65, max_deep=25):
             Settings(mode="OBSERVE", trade_stream_enabled=False, max_deep=max_deep),
             Path(directory) / "observe.db",
         )
+        postgrad_peaks = {"eligible": 0, "subscribed": 0, "current": 0, "clean_seconds": 0.0}
+        postgrad_ranges = {k: {"min": None, "max": None} for k in
+                           ("buy_count", "sell_count", "estimated_independent_buyers", "flow_ratio", "whale_share", "samples", "coverage_seconds")}
+        postgrad_processed = {"buy": 0, "sell": 0}
+        migrations = 0
         curve_attempts = 0
         successes = 0
         launch_count = 0
@@ -54,13 +59,16 @@ async def main(seconds=65, max_deep=25):
             return reports
 
         def counted_process(event, now=None):
-            nonlocal launch_count
+            nonlocal launch_count, migrations
             accepted = original_process(event, now)
             if event.kind == "trade" and not accepted:
                 reason = "stale" if abs((now if now is not None else event.ts) - event.ts) > engine.settings.max_data_age_seconds else "other"
                 trade_rejections[reason] += 1
             if accepted:
                 launch_count += event.kind == "create"
+                migrations += event.kind == "migration"
+                if event.source == "PumpSwap WSS" and event.kind == "trade":
+                    postgrad_processed[event.side] += 1
                 states.add(engine.tokens[event.mint].state.value)
                 if event.kind == "curve":
                     tier = event.evidence.get("poll_tier", "hot")
@@ -106,6 +114,19 @@ async def main(seconds=65, max_deep=25):
                         clean_candidates[t.mint] = None
                         if len(clean_candidates) > engine.settings.max_candidates:
                             clean_candidates.popitem(last=False)
+                postgrad = [t for t in engine.tokens.values() if t.flow_venue == "PUMPSWAP"]
+                postgrad_peaks["eligible"] = max(postgrad_peaks["eligible"], engine.pumpswap.health["eligible_pools"])
+                postgrad_peaks["subscribed"] = max(postgrad_peaks["subscribed"], engine.pumpswap.health["subscribed_pools"])
+                postgrad_peaks["clean_seconds"] = max(postgrad_peaks["clean_seconds"],
+                    max((engine.trade_coverage_seconds(t, sample_now) for t in postgrad), default=0))
+                current_postgrad = [t for t in postgrad if engine.trade_status(t, sample_now) == "CURRENT"]
+                postgrad_peaks["current"] = max(postgrad_peaks["current"], len(current_postgrad))
+                for t in current_postgrad:
+                    for metric, bounds in postgrad_ranges.items():
+                        value = t.features["180"].get(metric)
+                        if isinstance(value, (int, float)) and math.isfinite(value):
+                            bounds["min"] = value if bounds["min"] is None else min(value, bounds["min"])
+                            bounds["max"] = value if bounds["max"] is None else max(value, bounds["max"])
                 current_tokens = [t for t in engine.tokens.values() if engine.trade_status(t, sample_now) == "CURRENT"]
                 maximum_current_candidates = max(maximum_current_candidates, len(current_tokens))
                 for token in current_tokens:
@@ -151,6 +172,13 @@ async def main(seconds=65, max_deep=25):
                 trade_blockers["disconnected"] += not engine.onchain.health["connected"]
                 trade_blockers["pending_recovery"] += engine.recovery.overlaps(token, time.time())
             report = {
+                "pumpswap_flow": snap["health"]["pumpswap_flow"],
+                "postgrad_peaks": postgrad_peaks,
+                "postgrad_current_ranges": postgrad_ranges,
+                "postgrad_processed": postgrad_processed,
+                "migrations_processed": migrations,
+                "pregrad_evidence_counts": {status: sum(t.flow_venue != "PUMPSWAP" and engine.trade_status(t) == status
+                    for t in engine.tokens.values()) for status in ("CURRENT", "PARTIAL", "UNAVAILABLE")},
                 "current_evidence_ranges": current_ranges,
                 "transport_timing": [{"seconds": round(item["at"] - start_wall, 2), "state": item["state"]}
                                      for item in engine.onchain.health["transport_transitions"]],

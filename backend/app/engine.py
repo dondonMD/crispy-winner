@@ -21,6 +21,7 @@ from backend.app.features import calculate_features, score_token
 from backend.app.paper import PaperAccount
 from backend.app.providers import DexScreenerProvider, PumpPortalProvider, SolanaProvider
 from backend.app.truncation import TruncationRecovery
+from backend.app.pumpswap import PumpSwapFlow, VerifiedPool
 from backend.app.resources import ResourceMonitor
 from backend.app.intelligence import Intelligence
 
@@ -76,14 +77,15 @@ class RadarEngine:
         )
         self.onchain: OnchainPumpDiscovery
         self.recovery = TruncationRecovery(
-            self.rpc, lambda mint: mint in self.tokens, self.invalidate_token_trade_coverage,
+            self.rpc, lambda mint: mint in self.tokens, self.invalidate_pump_token_coverage,
             lambda: self.onchain.global_gap("truncation_recovery"), self.refresh_trade_continuity,
         )
         self.onchain = OnchainPumpDiscovery(
             self.submit, tracked=lambda mint: mint in self.tokens, on_gap=self.invalidate_trade_coverage,
-            on_trade_gap=self.invalidate_token_trade_coverage, on_truncation=self.recovery.submit,
+            on_trade_gap=self.invalidate_pump_token_coverage, on_truncation=self.recovery.submit,
             quote_for=lambda mint: self.tokens[mint].verified_quote_mint if mint in self.tokens else ""
         )
+        self.pumpswap = PumpSwapFlow(self.submit, self.verified_flow_pools, self.invalidate_postgrad_coverage)
         self.discovery_providers: list[DiscoveryProvider] = [self.onchain, self.pump]
         self.lab: dict = {"holdout": {"count": 0, "status": "UNVALIDATED"}, "sample_count": 0}
         self.approved_evidence: dict | None = None
@@ -159,6 +161,10 @@ class RadarEngine:
             if token.state in [State.MATURING, State.NEAR_GRADUATION]:
                 token.state = State.WATCHING  # Restored lifecycle requires new verified evidence.
             token.graduation = row.get("graduation")
+            token.migration_pool = row.get("migration_pool", "")
+            if token.graduation and self.settings.mode != "DEMO":
+                token.flow_venue = "PUMPSWAP"
+                token.flow_epoch = time.time()
             token.grad_high = row.get("grad_high", 0)
             token.grad_low = row.get("grad_low") or math.inf
             # security and prices intentionally need refresh, not assumed current after downtime.
@@ -261,8 +267,18 @@ class RadarEngine:
         if event.source == "DEMO" and self.settings.mode != "DEMO":
             self.rejected_payloads += 1
             return False
-        if event.kind == "trade" and event.source == "Solana WSS" and event.mint not in self.tokens:
+        if event.kind == "trade" and event.source in ("Solana WSS", "PumpSwap WSS") and event.mint not in self.tokens:
             return False
+        existing = self.tokens.get(event.mint)
+        if event.kind == "trade" and existing:
+            if existing.flow_venue == "PUMPSWAP" and event.source != "PumpSwap WSS":
+                # History already stored before migration remains; late curve flow supplies no post-grad evidence.
+                return False
+            if event.source == "PumpSwap WSS":
+                pool = self.pumpswap.pools.get(event.evidence.get("pool"))
+                if (existing.flow_venue != "PUMPSWAP" or not pool or pool.mint != existing.mint
+                        or event.ts < existing.flow_epoch):
+                    return False
         if abs(now - event.ts) > self.settings.max_data_age_seconds:
             if event.kind == "trade" and event.mint in self.tokens:
                 self.invalidate_token_trade_coverage(event.mint, reason="stale", now=now)
@@ -295,7 +311,7 @@ class RadarEngine:
         token = self.tokens.get(event.mint) or self.admit(event)
         if token is None:
             return False
-        if event.ts < token.last_event and not (event.kind == "trade" and event.source == "Solana WSS"):
+        if event.ts < token.last_event and not (event.kind == "trade" and event.source in ("Solana WSS", "PumpSwap WSS")):
             token.degraded = True
             self.out_of_order += 1
             return False
@@ -393,6 +409,12 @@ class RadarEngine:
         ):
             self.transition(token, State.GRADUATING, "Provider migration evidence", event.ts)
             token.graduation = event.ts
+            if self.settings.mode != "DEMO":
+                token.flow_venue = "PUMPSWAP"
+                token.migration_pool = event.pair
+                token.flow_epoch = max(now, event.ts)
+                token.last_trade = 0
+                token.postgrad_gap = token.flow_epoch
             self.db.add(
                 "graduation",
                 {
@@ -572,6 +594,8 @@ class RadarEngine:
             self.tasks.append(asyncio.create_task(self.run_demo(), name="demo"))
         else:
             self.tasks.append(asyncio.create_task(self.run_enrichment(), name="enrichment"))
+            if self.pumpswap.health["enabled"]:
+                self.tasks.append(asyncio.create_task(self.pumpswap.run(), name="pumpswap-flow"))
             if self.onchain.health["enabled"]:
                 self.tasks.append(asyncio.create_task(self.recovery.run(), name="truncation-recovery"))
             for name, provider in zip(("onchain-discovery", "pumpportal"), self.discovery_providers):
@@ -789,6 +813,8 @@ class RadarEngine:
                 for _, p in self.dex.cache.values()
                 if p and p["baseToken"]["address"] == token.mint
             }
+            if token.migration_pool:
+                known.add(token.migration_pool)
             try:
                 report = await self.rpc.inspect(token.mint, token.creator, known)
             except (RuntimeError, ValueError, KeyError, TypeError):
@@ -868,6 +894,7 @@ class RadarEngine:
                     "creator": token.creator,
                     "state": token.state.value,
                     "graduation": token.graduation,
+                    "migration_pool": token.migration_pool,
                     "grad_high": token.grad_high,
                     "grad_low": token.grad_low if math.isfinite(token.grad_low) else None,
                     "scores": token.scores,
@@ -974,6 +1001,7 @@ class RadarEngine:
             "features": self.display_features(token),
             "launch_metadata": token.launch_metadata,
             "trade_evidence": self.trade_status(token),
+            "flow_venue": "POST-GRAD PUMPSWAP FLOW" if token.flow_venue == "PUMPSWAP" else "PRE-GRAD FLOW",
             "curve_observed_at": token.last_curve or None,
             "curve_peak_progress": token.curve_peak_progress,
             "curve_data_quality": "UNKNOWN"
@@ -1015,11 +1043,35 @@ class RadarEngine:
 
         return companion_examples(self.settings, now)
 
+    def verified_flow_pools(self):
+        result = []
+        for token in sorted(self.tokens.values(), key=lambda t: t.priority(), reverse=True):
+            if (not token.graduation or token.flow_venue != "PUMPSWAP" or token.state not in
+                    (State.GRADUATED, State.POST_GRAD_OBSERVATION, State.ENTRY_CANDIDATE)):
+                continue
+            for pool in sorted(token.security.get("verified_pools", []), key=lambda p: p.get("address", "")):
+                if pool.get("base_mint") == token.mint and pool.get("address") and pool.get("quote_mint"):
+                    result.append(VerifiedPool(pool["address"], token.mint, pool["quote_mint"]))
+        return result
+
+    def invalidate_pump_token_coverage(self, mint, reason="decode", now=None):
+        token = self.tokens.get(mint)
+        if token and token.flow_venue != "PUMPSWAP":
+            self.invalidate_token_trade_coverage(mint, reason, now)
+
+    def invalidate_postgrad_coverage(self, mint, now=None):
+        token = self.tokens.get(mint)
+        if token and token.flow_venue == "PUMPSWAP":
+            self.invalidate_token_trade_coverage(mint, now=now)
+
     def invalidate_token_trade_coverage(self, mint, reason="decode", now=None):
         token = self.tokens.get(mint)
         if token is None:
             return
-        token.trade_gap = max(token.trade_gap, time.time() if now is None else now)
+        if token.flow_venue == "PUMPSWAP":
+            token.postgrad_gap = max(token.postgrad_gap, time.time() if now is None else now)
+        else:
+            token.trade_gap = max(token.trade_gap, time.time() if now is None else now)
         self.trade_continuity["per_token_resets"] += 1
         reason = reason if reason in self.trade_continuity["per_token_reasons"] else "decode"
         self.trade_continuity["per_token_reasons"][reason] += 1
@@ -1031,6 +1083,8 @@ class RadarEngine:
         # Only transport or unassignable event loss reaches this callback.
         self.trade_continuity["global_resets"] += 1
         for token in self.tokens.values():
+            if token.flow_venue == "PUMPSWAP":
+                continue
             token.trade_gap = time.time()
             for features in token.features.values():
                 features["continuity_valid"] = False
@@ -1041,14 +1095,25 @@ class RadarEngine:
         for candidate in ([token] if token is not None else self.tokens.values()):
             clean = self.trade_coverage_seconds(candidate, now)
             for seconds, features in candidate.features.items():
-                pending = self.recovery.overlaps(candidate, now, int(seconds))
+                pending = candidate.flow_venue != "PUMPSWAP" and self.recovery.overlaps(candidate, now, int(seconds))
                 features["coverage_seconds"] = clean
                 features["coverage_state"] = "PENDING RECOVERY" if pending else "OBSERVING"
+                if candidate.flow_venue == "PUMPSWAP" and not self.pumpswap.coverage(candidate.mint, now):
+                    selected = any(p.mint == candidate.mint for p in self.pumpswap.pools.values())
+                    eligible = any(p.mint == candidate.mint for p in self.verified_flow_pools())
+                    features["coverage_state"] = ("AWAITING ACK" if selected else "CAPACITY LIMITED" if eligible
+                                                  else "VERIFIED POOL UNAVAILABLE")
                 features["continuity_valid"] = clean >= int(seconds) and not pending
             if "180" in candidate.features:
                 candidate.features["180"]["trade_evidence"] = self.trade_status(candidate, now)
 
     def trade_coverage_seconds(self, token, now):
+        if token.flow_venue == "PUMPSWAP":
+            verified = {p.address: p for p in self.verified_flow_pools() if p.mint == token.mint}
+            if not verified or any(self.pumpswap.pools.get(p) != record or p not in self.pumpswap.since
+                                   for p, record in verified.items()):
+                return 0
+            return min(self.pumpswap.coverage(token.mint, now), max(0, now - max(token.flow_epoch, token.postgrad_gap)))
         health = self.onchain.health
         start = max(health["connected_since"], health["last_decode_gap"], token.trade_tracking_since, token.trade_gap)
         return max(0, now - start) if health["connected"] else 0
@@ -1060,7 +1125,9 @@ class RadarEngine:
             return "CURRENT"
         if not f.get("samples") or not f.get("units_valid"):
             return "UNAVAILABLE"
-        if (not self.recovery.overlaps(token, now) and self.onchain.health["connected"] and f.get("continuity_valid") and f.get("samples", 0) >= 3
+        ready = (self.trade_coverage_seconds(token, now) >= 180 if token.flow_venue == "PUMPSWAP"
+                 else not self.recovery.overlaps(token, now) and self.onchain.health["connected"])
+        if (ready and f.get("continuity_valid") and f.get("samples", 0) >= 3
                 and 0 <= now - token.last_trade <= self.settings.max_data_age_seconds):
             return "CURRENT"
         return "PARTIAL"
@@ -1173,7 +1240,11 @@ class RadarEngine:
                 "duplicates": self.duplicates,
                 "out_of_order": self.out_of_order,
                 "pending_outcomes": len(self.collector.pending),
+                "pumpswap_flow": {**self.pumpswap.health, "evidence_counts": {
+                    status: sum(t.flow_venue == "PUMPSWAP" and self.trade_status(t) == status for t in self.tokens.values())
+                    for status in ("CURRENT", "PARTIAL", "UNAVAILABLE")}},
                 "providers": {
+                    "PumpSwap flow": self.provider_health(self.pumpswap.health),
                     "Onchain discovery": self.provider_health(self.onchain.health),
                     "PumpPortal": self.provider_health(self.pump.health),
                     "Solana RPC": self.provider_health(

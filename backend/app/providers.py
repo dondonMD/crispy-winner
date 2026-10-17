@@ -300,7 +300,7 @@ class SolanaProvider(HttpProvider):
             except ValueError:
                 continue
             excluded.update({pair, parsed_pool["base_account"], parsed_pool["quote_account"]})
-            verified_pools.append(parsed_pool)
+            verified_pools.append({**parsed_pool, "address": pair})
 
         from backend.app.security import analyse_security
 

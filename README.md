@@ -56,7 +56,7 @@ Configure `SOLANA_WS_URL` privately for direct standard Solana launch discovery 
 
 | Provider | Default role | Cost / access |
 |---|---|---|
-| Standard Solana WSS | Pump create/migration discovery and tracked trade evidence via logsSubscribe | Configure SOLANA_WS_URL; one connection; bounded getTransaction identity recovery only for explicit log truncations |
+| Standard Solana WSS | Pump discovery/pre-grad trades; verified PumpSwap post-grad trades via logsSubscribe | Configure SOLANA_WS_URL; one Pump connection plus one multiplexed connection for at most 25 verified pools; bounded getTransaction identity recovery only for explicit Pump log truncations |
 | PumpPortal | Optional launch/migration alternative | Disabled unless PUMPPORTAL_ENABLED=true; availability varies |
 | PumpPortal optional trades | Bounded wallet-level candidate trades | Opt-in API key; funded provider account; docs currently 0.01 SOL/10,000 events |
 | Solana public RPC | Batched pre-grad curve progress; selective authorities, Token-2022, holders, creator balances, pool/curve verification | Free, throttled; custom URL optional |
@@ -64,7 +64,7 @@ Configure `SOLANA_WS_URL` privately for direct standard Solana launch discovery 
 | Helius | Optional standard HTTP + WSS endpoints | Provider plan/key; no premium streaming dependency |
 | Jupiter | Evaluated, not used in v1 | No requests or execution integration |
 
-Detailed verified docs: [providers](docs/providers), [research](docs/research.md). No funded trade-stream key was supplied during development. **Free sources cannot establish independent buyer flow**; the system waits rather than inventing it. Enable metered subscriptions only knowingly using `PUMPPORTAL_ENABLED=true`, `trade_stream_enabled: true` and private `PUMPPORTAL_API_KEY`. No provider wallet key/seed is stored here.
+Detailed verified docs: [providers](docs/providers), [research](docs/research.md). No funded trade-stream key was supplied during development. **Standard WSS can supply structured flow evidence** when verified units, continuity, samples and freshness pass; incomplete evidence stays unavailable. Post-grad flow uses a fresh verified-pool epoch, described in [PumpSwap flow](docs/providers/pumpswap-flow.md). Enable metered subscriptions only knowingly using `PUMPPORTAL_ENABLED=true`, `trade_stream_enabled: true` and private `PUMPPORTAL_API_KEY`. No provider wallet key/seed is stored here.
 
 Free OBSERVE polls derived curve PDAs using `getMultipleAccounts` and a cached global baseline.
 The hot set (default 25) polls about every 30 seconds; remaining active pre-grad candidates
@@ -166,4 +166,4 @@ CRISPY WINNER
 
 Open **FOMO Companion**, filter the action queue, inspect blockers and evidence completeness, then use **Copy mint** and paste the exact mint into your own trading interface. No FOMO integration, invented deep link, wallet connection or transaction submission exists. Clipboard failure offers a selectable mint for manual copying. Token Intelligence puts the same decision above technical evidence.
 
-The $20 account retains the existing maximum 20% allocation: proposed and economically allowed positions come from the economics engine; a manual ceiling exists only for ENTRY CANDIDATE. Missing costs and targets remain unavailable. Free OBSERVE lacks buyer-flow evidence, so high curve progress can correctly remain WAIT. No validated real-market edge has been established. DEMO includes four clearly labelled, isolated synthetic UI examples; they never enter the scanner, paper ledger or Strategy Lab. [Operating guide](docs/operating-guide.md), [limitations](docs/limitations.md).
+The $20 account retains the existing maximum 20% allocation: proposed and economically allowed positions come from the economics engine; a manual ceiling exists only for ENTRY CANDIDATE. Missing costs and targets remain unavailable. OBSERVE can collect provider-independent buyer-flow evidence, but missing security, post-grad continuity, economics or historical approval still keeps candidates at WAIT. No validated real-market edge has been established. DEMO includes four clearly labelled, isolated synthetic UI examples; they never enter the scanner, paper ledger or Strategy Lab. [Operating guide](docs/operating-guide.md), [limitations](docs/limitations.md).

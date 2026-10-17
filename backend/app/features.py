@@ -85,7 +85,12 @@ def window_features(events, now, seconds, creator=""):
 
 
 def calculate_features(token, now):
-    return {str(s): window_features(token.events, now, s, token.creator) for s in [10, 30, 60, 180, 300, 600]}
+    events = token.events
+    if token.flow_venue == "PUMPSWAP":
+        events = [e for e in events if e.kind != "trade" or (
+            e.source == "PumpSwap WSS" and e.evidence.get("venue") == "PUMPSWAP"
+            and e.ts >= token.flow_epoch)]
+    return {str(s): window_features(events, now, s, token.creator) for s in [10, 30, 60, 180, 300, 600]}
 
 
 def score_token(token, now):

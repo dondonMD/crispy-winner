@@ -265,3 +265,8 @@ blocks CURRENT trade evidence; untracked confirmation can preserve prior clean
 coverage, while tracked impact and unresolved recovery retain local/global gaps.
 The 180-second requirement, freshness, units, thresholds and all Companion/core
 gates remain unchanged. See [recovery accounting](providers/onchain-discovery.md#targeted-truncation-recovery).
+
+Flow evidence now follows the current venue epoch: Pump before migration and
+verified pool-specific PumpSwap after migration. Pre-grad samples cannot improve
+post-grad evidence grade. Opportunity rules and thresholds are unchanged; see
+[PumpSwap source](providers/pumpswap-flow.md) for continuity and capacity limits.

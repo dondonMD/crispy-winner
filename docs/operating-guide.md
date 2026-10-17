@@ -175,3 +175,17 @@ ambiguous calls. These are identity-recovery diagnostics, not PumpSwap trade flo
 The 600-second probe records bounded relative WSS connection timing and CURRENT-only
 aggregate ranges. A route can preserve unrelated candidates only after complete,
 unambiguous canonical mapping; unknown/malformed routes remain fail-closed.
+
+## Verified post-grad flow
+
+Use the existing `SOLANA_WS_URL` for the standard PumpSwap connection. No new
+credential, paid stream, PumpPortal flag or HTTP trade polling is needed.
+System Health distinguishes verified eligible pools, subscribed/ACKed pools,
+capacity-limited pools and post-grad evidence counts. At most 25 pools share
+one connection. A migration alone supplies no flow: the existing security scan
+must independently verify the pool, then its subscription must ACK and collect
+180 clean seconds, three samples, known units and a fresh trade within 20 seconds.
+Candidate cards identify PRE-GRAD FLOW versus POST-GRAD PUMPSWAP FLOW.
+A missing pool, capacity limit, disconnect or local event loss keeps evidence
+incomplete. The existing scan cadence/backoff is unchanged; public-RPC delays
+can postpone pool eligibility. See [provider details](providers/pumpswap-flow.md).

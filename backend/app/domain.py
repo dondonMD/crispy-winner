@@ -180,6 +180,10 @@ class Token:
         }
     )
     last_event: float = 0
+    flow_venue: str = "PUMP"
+    migration_pool: str = ""
+    flow_epoch: float = 0
+    postgrad_gap: float = 0
     last_trade: float = 0
     verified_quote_mint: str = ""
     trade_gap: float = 0

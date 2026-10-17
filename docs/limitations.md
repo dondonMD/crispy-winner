@@ -107,3 +107,20 @@ trade flow or executed amounts. Missing CPI ancestry for inner routes, malformed
 route shapes, unrelated unknown Pump instructions and transport loss remain
 conservative global gaps. Successful recovery can preserve coverage but cannot
 create samples, verified units, fresh observations, security or approved evidence.
+
+## Verified PumpSwap flow
+
+Post-grad flow is limited to independently parsed pools of confirmed migrated,
+currently relevant tracked candidates. The existing security scan is the only
+pool-inspection path; RPC pressure or missing pool hints can delay eligibility.
+Only 25 pool subscriptions share the added standard WSS connection. Candidates
+outside capacity have unavailable coverage, not zero flow. Every eligible pool
+for a token must be observed before its aggregate flow can become CURRENT.
+Only the pinned exact BuyEvent/SellEvent layouts and verified WSOL/USDC units
+are supported. Future layouts fail closed. Pool-specific truncation has no
+backfill and restarts that token's clean window. A notification with conflicting
+pool identities is rejected in full, including multi-pool transactions.
+Transport loss, existing queue lag and rolling-buffer loss may also prevent
+180 clean seconds. Pre-grad flow is retained only as bounded history after
+migration and never supplies post-grad evidence. Fresh flow cannot replace
+security, economics or approved prospective historical evidence.

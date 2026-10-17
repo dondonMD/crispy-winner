@@ -304,3 +304,11 @@ candidates. No samples means unavailable ranges, never fabricated zeros.
 This adds no PumpSwap BuyEvent/SellEvent decoding, MarketEvents, strategy features,
 wallet or transaction-submission capability. Existing 180-second continuity,
 20-second freshness, units and all numerical gates remain unchanged.
+
+## Post-graduation venue boundary
+
+Verified migrated pools now use the separate bounded
+[PumpSwap flow source](pumpswap-flow.md). The existing global Pump subscription
+and truncation identity recovery remain unchanged. Their trades and clean
+coverage cannot supply a post-grad CURRENT window; their global gaps likewise
+do not erase an independently observed PumpSwap window.

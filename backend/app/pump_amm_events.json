@@ -1,0 +1,350 @@
+{
+  "source": {
+    "repository": "pump-fun/pump-public-docs",
+    "commit": "639b87fb45c3adeffa6f7c4a1bf0cb85e392bf22",
+    "path": "idl/pump_amm.json",
+    "sha256": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b"
+  },
+  "program": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+  "events": [
+    {
+      "name": "BuyEvent",
+      "discriminator": [
+        103,
+        244,
+        82,
+        31,
+        44,
+        245,
+        119,
+        119
+      ]
+    },
+    {
+      "name": "SellEvent",
+      "discriminator": [
+        62,
+        47,
+        55,
+        10,
+        165,
+        3,
+        220,
+        42
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "BuyEvent",
+      "docs": [
+        "ix_name: \"buy\" | \"buy_exact_quote_in\""
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "base_amount_out",
+            "type": "u64"
+          },
+          {
+            "name": "max_quote_amount_in",
+            "type": "u64"
+          },
+          {
+            "name": "user_base_token_reserves",
+            "type": "u64"
+          },
+          {
+            "name": "user_quote_token_reserves",
+            "type": "u64"
+          },
+          {
+            "name": "pool_base_token_reserves",
+            "type": "u64"
+          },
+          {
+            "name": "pool_quote_token_reserves",
+            "type": "u64"
+          },
+          {
+            "name": "quote_amount_in",
+            "type": "u64"
+          },
+          {
+            "name": "lp_fee_basis_points",
+            "type": "u64"
+          },
+          {
+            "name": "lp_fee",
+            "type": "u64"
+          },
+          {
+            "name": "protocol_fee_basis_points",
+            "type": "u64"
+          },
+          {
+            "name": "protocol_fee",
+            "type": "u64"
+          },
+          {
+            "name": "quote_amount_in_with_lp_fee",
+            "type": "u64"
+          },
+          {
+            "name": "user_quote_amount_in",
+            "type": "u64"
+          },
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "user_base_token_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "user_quote_token_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "protocol_fee_recipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "protocol_fee_recipient_token_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "coin_creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "coin_creator_fee_basis_points",
+            "type": "u64"
+          },
+          {
+            "name": "coin_creator_fee",
+            "type": "u64"
+          },
+          {
+            "name": "track_volume",
+            "type": "bool"
+          },
+          {
+            "name": "total_unclaimed_tokens",
+            "type": "u64"
+          },
+          {
+            "name": "total_claimed_tokens",
+            "type": "u64"
+          },
+          {
+            "name": "current_sol_volume",
+            "type": "u64"
+          },
+          {
+            "name": "last_update_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "min_base_amount_out",
+            "type": "u64"
+          },
+          {
+            "name": "ix_name",
+            "type": "string"
+          },
+          {
+            "name": "cashback_fee_basis_points",
+            "type": "u64"
+          },
+          {
+            "name": "cashback",
+            "type": "u64"
+          },
+          {
+            "name": "buyback_fee_basis_points",
+            "type": "u64"
+          },
+          {
+            "name": "buyback_fee",
+            "type": "u64"
+          },
+          {
+            "name": "virtual_quote_reserves",
+            "type": "i128"
+          },
+          {
+            "name": "can_boost",
+            "type": "bool"
+          },
+          {
+            "name": "base_supply",
+            "type": "u64"
+          },
+          {
+            "name": "holder_rewards_bps",
+            "type": "u64"
+          },
+          {
+            "name": "holder_rewards",
+            "type": "u64"
+          },
+          {
+            "name": "creator_fee_unclaimed",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SellEvent",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "base_amount_in",
+            "type": "u64"
+          },
+          {
+            "name": "min_quote_amount_out",
+            "type": "u64"
+          },
+          {
+            "name": "user_base_token_reserves",
+            "type": "u64"
+          },
+          {
+            "name": "user_quote_token_reserves",
+            "type": "u64"
+          },
+          {
+            "name": "pool_base_token_reserves",
+            "type": "u64"
+          },
+          {
+            "name": "pool_quote_token_reserves",
+            "type": "u64"
+          },
+          {
+            "name": "quote_amount_out",
+            "type": "u64"
+          },
+          {
+            "name": "lp_fee_basis_points",
+            "type": "u64"
+          },
+          {
+            "name": "lp_fee",
+            "type": "u64"
+          },
+          {
+            "name": "protocol_fee_basis_points",
+            "type": "u64"
+          },
+          {
+            "name": "protocol_fee",
+            "type": "u64"
+          },
+          {
+            "name": "quote_amount_out_without_lp_fee",
+            "type": "u64"
+          },
+          {
+            "name": "user_quote_amount_out",
+            "type": "u64"
+          },
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "user_base_token_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "user_quote_token_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "protocol_fee_recipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "protocol_fee_recipient_token_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "coin_creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "coin_creator_fee_basis_points",
+            "type": "u64"
+          },
+          {
+            "name": "coin_creator_fee",
+            "type": "u64"
+          },
+          {
+            "name": "cashback_fee_basis_points",
+            "type": "u64"
+          },
+          {
+            "name": "cashback",
+            "type": "u64"
+          },
+          {
+            "name": "buyback_fee_basis_points",
+            "type": "u64"
+          },
+          {
+            "name": "buyback_fee",
+            "type": "u64"
+          },
+          {
+            "name": "virtual_quote_reserves",
+            "type": "i128"
+          },
+          {
+            "name": "can_boost",
+            "type": "bool"
+          },
+          {
+            "name": "base_supply",
+            "type": "u64"
+          },
+          {
+            "name": "holder_rewards_bps",
+            "type": "u64"
+          },
+          {
+            "name": "holder_rewards",
+            "type": "u64"
+          },
+          {
+            "name": "creator_fee_unclaimed",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}
