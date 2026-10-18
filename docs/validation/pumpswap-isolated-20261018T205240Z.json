@@ -1,0 +1,89 @@
+{
+  "diagnostic_only": true,
+  "strategy_current_claimed": false,
+  "pool": "Cz6WzWV8FsREtsin7TmRpqgm1BcETCgM8EQcA5X2QJDQ",
+  "base_mint": "GD3thpuWqREqzqpX72R5NfsnyBbUinow8UFEmTKpump",
+  "quote_mint": "So11111111111111111111111111111111111111112",
+  "ownership_layout_verified": true,
+  "runtime_seconds": 300.00092729500466,
+  "transport": {
+    "messages": 4056,
+    "acks": 1,
+    "reconnects": 0,
+    "errors": 0,
+    "buy_events": 2319,
+    "sell_events": 1715,
+    "accepted": 4034,
+    "invalid_units": 0,
+    "duplicates": 0,
+    "decode_failures": 3,
+    "token_local_gaps": 3,
+    "truncations": 3,
+    "eligible_pools": 1,
+    "subscribed_pools": 1,
+    "capacity_limited": 0,
+    "last_success": 1792357104.5605962,
+    "enabled": true,
+    "connected": true,
+    "attempted": true,
+    "connected_since": 1792356805.417273,
+    "capacity": 25,
+    "normal_trade_http_requests": 0,
+    "failure_categories": {
+      "truncated": 3,
+      "unsupported_layout": 0,
+      "invalid_bool": 0,
+      "invalid_string": 0,
+      "invalid_pubkey": 0,
+      "invalid_timestamp_value": 0,
+      "invalid_encoding": 0,
+      "invocation_framing": 0,
+      "pool_identity": 0,
+      "notification": 0
+    }
+  },
+  "subscription_requested": true,
+  "subscription_ack": true,
+  "observations": {
+    "currency": "SOL",
+    "buy_count": 2319,
+    "sell_count": 1715,
+    "sample_count": 4034,
+    "first_event_elapsed_seconds": 1.2621866560002672,
+    "last_event_age_seconds": 3.640389919281006,
+    "total_actual_quote_buy_volume": "39.721077509",
+    "total_actual_quote_sell_volume": "12.387101408",
+    "rejected_observations": 0,
+    "local_gaps": 3,
+    "examples": [
+      {
+        "side": "sell",
+        "quote_amount": 0.000101804,
+        "timestamp": 1792356803.0,
+        "slot": 458574504,
+        "pool": "Cz6WzWV8FsREtsin7TmRpqgm1BcETCgM8EQcA5X2QJDQ"
+      },
+      {
+        "side": "buy",
+        "quote_amount": 0.000177708,
+        "timestamp": 1792356803.0,
+        "slot": 458574504,
+        "pool": "Cz6WzWV8FsREtsin7TmRpqgm1BcETCgM8EQcA5X2QJDQ"
+      },
+      {
+        "side": "buy",
+        "quote_amount": 0.000185244,
+        "timestamp": 1792356803.0,
+        "slot": 458574504,
+        "pool": "Cz6WzWV8FsREtsin7TmRpqgm1BcETCgM8EQcA5X2QJDQ"
+      }
+    ]
+  },
+  "executed_volume_fields": {
+    "buy": "user_quote_amount_in",
+    "sell": "user_quote_amount_out"
+  },
+  "verification_http_requests": 1,
+  "normal_path_trade_http_delta": 0,
+  "isolation": "No RadarEngine, database, strategy, research or paper account instantiated"
+}

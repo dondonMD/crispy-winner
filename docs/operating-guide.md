@@ -208,3 +208,7 @@ Recovery backlog diagnostics and the bounded two-worker scheduler are described 
 [truncation recovery scheduling](truncation-recovery-pressure.md). Check arrival and
 completion bursts, queue/service latency and monitoring progress together before
 changing capacity; overflow and expiry always invalidate continuity.
+
+For a strategy-isolated real-pool transport/decoder check, use the
+[standalone PumpSwap validation command](isolated-pumpswap-validation.md). Its
+observations never enter candidate, research, Companion, Opportunity or paper state.
