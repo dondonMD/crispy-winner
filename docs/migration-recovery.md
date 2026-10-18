@@ -1,5 +1,10 @@
 # Truncation-only canonical migration recovery
 
+The historical validation below predates the acquisition-time correction. Current
+recovered-migration age handling is documented in
+[recovered migration freshness](recovered-migration-freshness.md); chain time is
+preserved while recovery duration and acquisition freshness are bounded separately.
+
 The code-level lifecycle gap was confirmed: `transaction_impact()` recognised
 `migrate` and `migrate_v2` from the pinned schema but discarded their identities.
 It returned trade-impact classification only. A migration event hidden by

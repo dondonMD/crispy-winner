@@ -128,6 +128,8 @@ security, economics or approved prospective historical evidence.
 Truncated Pump migration instructions now supply tracked lifecycle observations
 through the existing processor. This does not make a recovered pool independently
 verified or its trade flow current. Missing transaction time uses a labelled
-confirmed-observation upper bound; the original 20-second freshness check can
-reject delayed recovery. Inner migration CPIs without provable success remain
+confirmed-observation upper bound. Verified recovered migrations now require
+fresh acquisition evidence within 20 seconds after verification and a recovery
+duration at most 45 seconds; chain occurrence time is retained. See
+[the time-separation rules](recovered-migration-freshness.md). Inner migration CPIs without provable success remain
 counted but cannot emit lifecycle evidence. See [migration recovery](migration-recovery.md).

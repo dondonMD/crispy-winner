@@ -283,7 +283,16 @@ class RadarEngine:
         return token
 
     def process(self, event, now=None):
-        now = event.ts if now is None else now
+        recovered_source = event.kind == "migration" and event.source == "Recovered Pump instruction"
+        now = (time.time() if recovered_source else event.ts) if now is None else now
+        recovered_migration = False
+        if recovered_source:
+            error = self.recovery.migration_freshness_error(event, now, self.settings.max_data_age_seconds)
+            if error:
+                self.recovery.health[error] += 1
+                self.rejected_payloads += 1
+                return False
+            recovered_migration = True
         if event.source == "DEMO" and self.settings.mode != "DEMO":
             self.rejected_payloads += 1
             return False
@@ -299,7 +308,7 @@ class RadarEngine:
                 if (existing.flow_venue != "PUMPSWAP" or not pool or pool.mint != existing.mint
                         or event.ts < existing.flow_epoch):
                     return False
-        if abs(now - event.ts) > self.settings.max_data_age_seconds:
+        if not recovered_migration and abs(now - event.ts) > self.settings.max_data_age_seconds:
             if event.kind == "trade" and event.mint in self.tokens:
                 self.invalidate_token_trade_coverage(event.mint, reason="stale", now=now)
             self.rejected_payloads += 1
@@ -331,9 +340,6 @@ class RadarEngine:
         token = self.tokens.get(event.mint) or self.admit(event)
         if token is None:
             return False
-        recovered_migration = (event.kind == "migration" and event.source == "Recovered Pump instruction"
-            and event.evidence.get("identity_quality") == "VERIFIED"
-            and event.evidence.get("instruction") in ("migrate", "migrate_v2"))
         if event.ts < token.last_event and not recovered_migration and not (event.kind == "trade" and event.source in ("Solana WSS", "PumpSwap WSS")):
             token.degraded = True
             self.out_of_order += 1
@@ -458,7 +464,8 @@ class RadarEngine:
                 "Await pullback, stabilisation and renewed buying",
                 event.ts,
             )
-        self.analyse(token, event.ts)
+        evaluation_at = now if recovered_migration else event.ts
+        self.analyse(token, evaluation_at)
         if token.graduation and event.kind in ("migration", "security"):
             detail = (f"{event.source}; instruction={event.evidence.get('instruction', 'visible event')}; "
                       f"slot={event.evidence.get('slot')}; signature={event.signature}" if event.kind == "migration"
@@ -466,15 +473,15 @@ class RadarEngine:
             self.trace_handoff(token, now, event.kind, detail)
         if not self.metrics.get("storage_full"):
             self.collector.observe(token, event)
-        self.paper.observe(token, event.ts)
+        self.paper.observe(token, evaluation_at)
         if (
             token.price
-            and event.ts - token.last_signal >= self.settings.signal_interval_seconds
+            and evaluation_at - token.last_signal >= self.settings.signal_interval_seconds
             and not self.metrics.get("storage_full")
         ):
-            self.collector.signal(token, event.ts, self.version)
-            token.last_signal = event.ts
-            self.paper.request_entry(token, event.ts, self.version)
+            self.collector.signal(token, evaluation_at, self.version)
+            token.last_signal = evaluation_at
+            self.paper.request_entry(token, evaluation_at, self.version)
         if not self.metrics.get("storage_full"):
             self.db.add(
                 "event",
@@ -509,7 +516,9 @@ class RadarEngine:
                     else None,
                 }
             )
-        self.intelligence.observe(token, event.ts)
+        self.intelligence.observe(token, evaluation_at)
+        if recovered_migration and now - event.ts > self.settings.max_data_age_seconds:
+            self.recovery.health["recovered_migration_chain_age_accepted"] += 1
         self.processed += 1
         if event.kind == "trade":
             self.trade_observations[event.side] = self.trade_observations.get(event.side, 0) + 1

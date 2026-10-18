@@ -6,6 +6,8 @@ import asyncio
 from collections import OrderedDict
 from dataclasses import dataclass
 import json
+import hashlib
+import math
 from pathlib import Path
 import time
 from typing import Any
@@ -227,6 +229,16 @@ class Recovery:
     next_attempt: float = 0
 
 
+MIGRATION_AGE_COUNTERS = ("recovered_migration_chain_age_accepted",
+    "recovered_migration_recovery_freshness_rejected", "recovered_migration_recovery_window_rejected",
+    "recovered_migration_missing_freshness_provenance")
+
+
+def migration_digest(event):
+    return hashlib.sha256(json.dumps(event.model_dump(), sort_keys=True,
+        separators=(",", ":"), allow_nan=False).encode()).digest()
+
+
 class TruncationRecovery:
     MAX_PENDING = 32
     MAX_ATTEMPTS = 3
@@ -235,6 +247,7 @@ class TruncationRecovery:
     def __init__(self, rpc, tracked, local_gap, global_gap, changed, emit_migration=None):
         self.emit_migration = emit_migration
         self.migration_seen = Deduplicator(10000)
+        self.verified_migrations: OrderedDict[str, bytes] = OrderedDict()
         self.rpc, self.tracked = rpc, tracked
         self.local_gap, self.global_gap, self.changed = local_gap, global_gap, changed
         self.pending: OrderedDict[str, Recovery] = OrderedDict()
@@ -242,7 +255,8 @@ class TruncationRecovery:
         self.health: dict[str, Any] = {"requests": 0, "successful_requests": 0, "errors": 0, "rate_limits": 0,
                        "deduplicated": 0, "peak_pending": 0, "overflow": 0, "global_gaps": 0,
                        "token_local_gaps": 0, "classifications": dict.fromkeys(CLASSIFICATIONS, 0),
-                       **multi_hop.diagnostics(), **dict.fromkeys(MIGRATION_COUNTERS, 0),
+                       **multi_hop.diagnostics(), **dict.fromkeys(MIGRATION_COUNTERS + MIGRATION_AGE_COUNTERS, 0),
+                       "recovered_migration_last_ages": {},
                        "instruction_counts": dict.fromkeys((i["name"] for i in INSTRUCTIONS.values()), 0),
                        "instruction_histogram_transactions": 0}
 
@@ -279,6 +293,37 @@ class TruncationRecovery:
         self.pending.pop(recovery.signature, None)
         self.changed()
 
+    def migration_freshness_error(self, event, now, max_age):
+        """Session-bound proof; flags/source strings alone cannot grant lifecycle replay."""
+        missing = "recovered_migration_missing_freshness_provenance"
+        window = "recovered_migration_recovery_window_rejected"
+        stale = "recovered_migration_recovery_freshness_rejected"
+        e = event.evidence
+        if (event.kind != "migration" or event.source != "Recovered Pump instruction"
+                or e.get("identity_quality") != "VERIFIED" or e.get("data_quality") != "VERIFIED"
+                or e.get("instruction") not in MIGRATION_NAMES or e.get("program") != PUMP_PROGRAM
+                or e.get("schema_source") != SCHEMA["source"] or e.get("commitment") != "confirmed"
+                or e.get("mint") != event.mint or e.get("pool") != event.pair or e.get("inner") is not False):
+            return missing
+        observed, verified = e.get("truncation_observed_at"), e.get("recovery_verified_at")
+        if any(type(t) not in (int, float) or not math.isfinite(t) or t < 1_500_000_000
+               for t in (event.ts, observed, verified)):
+            return missing
+        self.health["recovered_migration_last_ages"] = {
+            "chain_age_seconds_at_process": round(now - event.ts, 3),
+            "recovery_age_seconds_at_process": round(now - verified, 3),
+            "recovery_duration_seconds": round(verified - observed, 3)}
+        if observed > now or event.ts > now or verified < observed or event.ts > verified or verified - observed > self.MAX_AGE:
+            return window
+        if verified > now or now - verified > max_age:
+            return stale
+        try:
+            if self.verified_migrations.get(event.event_id) != migration_digest(event):
+                return missing
+        except (ValueError, TypeError):
+            return missing
+        return None
+
     def emit_migrations(self, recovery, result, migrations):
         for identity in migrations:
             # A successful transaction does not prove a caught inner CPI succeeded.
@@ -311,6 +356,11 @@ class TruncationRecovery:
                     "slot": recovery.slot, "commitment": "confirmed", "program": PUMP_PROGRAM,
                     "schema_source": SCHEMA["source"], "time_basis": basis,
                     "truncation_observed_at": recovery.observed})
+            # Canonical transaction/layout/status/identity and MarketEvent validation have completed.
+            event.evidence["recovery_verified_at"] = time.time()
+            self.verified_migrations[event_id] = migration_digest(event)
+            while len(self.verified_migrations) > self.migration_seen.maximum:
+                self.verified_migrations.popitem(last=False)
             outcome = self.emit_migration(event) if self.emit_migration else "queue_dropped"
             self.health[f"recovered_migration_{outcome}"] += 1
 

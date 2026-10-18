@@ -26,6 +26,7 @@ async def main(seconds=65, max_deep=25):
                            ("buy_count", "sell_count", "estimated_independent_buyers", "flow_ratio", "whale_share", "samples", "coverage_seconds")}
         postgrad_processed = {"buy": 0, "sell": 0}
         migrations = 0
+        migration_application = dict.fromkeys(("new_graduation", "already_graduated", "lifecycle_ineligible"), 0)
         migration_rejections = {"stale": 0, "other": 0}
         curve_attempts = 0
         successes = 0
@@ -61,9 +62,14 @@ async def main(seconds=65, max_deep=25):
 
         def counted_process(event, now=None):
             nonlocal launch_count, migrations
+            recovery_stale_before = engine.recovery.health["recovered_migration_recovery_freshness_rejected"]
+            previous_graduation = engine.tokens[event.mint].graduation if event.mint in engine.tokens else None
             accepted = original_process(event, now)
             if event.kind == "migration" and not accepted:
-                reason = "stale" if abs((now if now is not None else event.ts) - event.ts) > engine.settings.max_data_age_seconds else "other"
+                if event.source == "Recovered Pump instruction":
+                    reason = "stale" if engine.recovery.health["recovered_migration_recovery_freshness_rejected"] > recovery_stale_before else "other"
+                else:
+                    reason = "stale" if abs((now if now is not None else event.ts) - event.ts) > engine.settings.max_data_age_seconds else "other"
                 migration_rejections[reason] += 1
             if event.kind == "trade" and not accepted:
                 reason = "stale" if abs((now if now is not None else event.ts) - event.ts) > engine.settings.max_data_age_seconds else "other"
@@ -71,6 +77,10 @@ async def main(seconds=65, max_deep=25):
             if accepted:
                 launch_count += event.kind == "create"
                 migrations += event.kind == "migration"
+                if event.kind == "migration":
+                    application = ("lifecycle_ineligible" if engine.tokens[event.mint].graduation is None else
+                                   "already_graduated" if previous_graduation is not None else "new_graduation")
+                    migration_application[application] += 1
                 if event.source == "PumpSwap WSS" and event.kind == "trade":
                     postgrad_processed[event.side] += 1
                 states.add(engine.tokens[event.mint].state.value)
@@ -181,6 +191,7 @@ async def main(seconds=65, max_deep=25):
                 "postgrad_current_ranges": postgrad_ranges,
                 "postgrad_processed": postgrad_processed,
                 "migrations_processed": migrations,
+                "migration_application_outcomes": migration_application,
                 "postgrad_handoff": snap["health"]["postgrad_handoff"],
                 "migration_process_rejections": migration_rejections,
                 "migration_lifecycle_counts": {state: sum(t.state.value == state for t in engine.tokens.values())

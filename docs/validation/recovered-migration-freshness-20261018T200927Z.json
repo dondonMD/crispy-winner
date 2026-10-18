@@ -1,0 +1,406 @@
+{
+  "elapsed_seconds": 602.72,
+  "launches": 248,
+  "migrations_processed": 1,
+  "migration_application_outcomes": {
+    "new_graduation": 1,
+    "already_graduated": 0,
+    "lifecycle_ineligible": 0
+  },
+  "migration_process_rejections": {
+    "stale": 0,
+    "other": 0
+  },
+  "migration_lifecycle_counts": {
+    "GRADUATED": 0,
+    "POST_GRAD_OBSERVATION": 0,
+    "ENTRY_CANDIDATE": 0
+  },
+  "postgrad_peaks": {
+    "eligible": 0,
+    "subscribed": 0,
+    "current": 0,
+    "clean_seconds": 0.0
+  },
+  "postgrad_current_ranges": {
+    "buy_count": {
+      "min": null,
+      "max": null
+    },
+    "sell_count": {
+      "min": null,
+      "max": null
+    },
+    "estimated_independent_buyers": {
+      "min": null,
+      "max": null
+    },
+    "flow_ratio": {
+      "min": null,
+      "max": null
+    },
+    "whale_share": {
+      "min": null,
+      "max": null
+    },
+    "samples": {
+      "min": null,
+      "max": null
+    },
+    "coverage_seconds": {
+      "min": null,
+      "max": null
+    }
+  },
+  "postgrad_processed": {
+    "buy": 0,
+    "sell": 0
+  },
+  "postgrad_handoff": {
+    "limit": 100,
+    "history_limit": 32,
+    "retained_candidates": 1,
+    "evicted_candidates": 0,
+    "trimmed_history_entries": 0,
+    "counts": {
+      "MIGRATION_PENDING": 0,
+      "LIFECYCLE_INELIGIBLE": 0,
+      "VENUE_NOT_PUMPSWAP": 0,
+      "MIGRATION_POOL_HINT_MISSING": 0,
+      "SECURITY_NOT_ATTEMPTED": 0,
+      "SECURITY_PENDING": 0,
+      "POOL_NOT_VERIFIED": 0,
+      "POOL_IDENTITY_INCOMPLETE": 0,
+      "WSS_DISCONNECTED": 0,
+      "SELECTION_PENDING": 0,
+      "CAPACITY_LIMITED": 0,
+      "ACK_PENDING": 0,
+      "QUOTE_UNITS_UNAVAILABLE": 0,
+      "COVERAGE_BUILDING": 0,
+      "SAMPLES_INSUFFICIENT": 0,
+      "TRADE_UNITS_UNAVAILABLE": 0,
+      "TRADE_STALE": 0,
+      "INCOMPLETE_EVIDENCE": 0,
+      "CURRENT": 0,
+      "NO_LONGER_TRACKED": 1
+    },
+    "records": [
+      {
+        "mint": "Qh4BkR3GZseT5PP3qUTywqPPpL9QwAiB2fmynTwpump",
+        "state": "EXPIRED",
+        "stage": "NO_LONGER_TRACKED",
+        "mode": "OBSERVE",
+        "simulated": false,
+        "migration_pool": "J29jgCDXY97DMYkC4Tx4LyebNEwphMzEF46hM7eBDSLz",
+        "graduation_at": 1792354324.0,
+        "flow_epoch": 1792354328.5833766,
+        "flow_venue": "PUMPSWAP",
+        "security_quality": "VERIFIED",
+        "security_attempt_at": 1792354330.7817295,
+        "security_applied_at": 1792354334.864225,
+        "verified_pool_count": 1,
+        "matching_base_pool_count": 1,
+        "migration_pool_verified": true,
+        "eligible_pool_count": 0,
+        "selected_pool_count": 0,
+        "acked_pool_count": 0,
+        "wss_connected": true,
+        "coverage_seconds": 0,
+        "samples": 0,
+        "units_valid": false,
+        "last_trade_age": null,
+        "trade_evidence": "UNAVAILABLE",
+        "decision": "REJECT",
+        "decision_reasons": [
+          "Unacceptable concentration: top_1_independent_pct",
+          "Unacceptable concentration: top_5_independent_pct",
+          "Current continuous trade/buyer evidence required",
+          "Security report stale",
+          "Token state not eligible",
+          "Stale or missing price",
+          "Stale or missing buyer flow",
+          "Stale or missing liquidity"
+        ],
+        "security_failures": [],
+        "security_warnings": [],
+        "updated_at": 1792354635.1145384,
+        "history": [
+          {
+            "at": 1792354324.0,
+            "event": "transition",
+            "stage": "SECURITY_NOT_ATTEMPTED",
+            "state": "GRADUATED",
+            "reason": "Migration recorded"
+          },
+          {
+            "at": 1792354324.0,
+            "event": "transition",
+            "stage": "SECURITY_NOT_ATTEMPTED",
+            "state": "POST_GRAD_OBSERVATION",
+            "reason": "Await pullback, stabilisation and renewed buying"
+          },
+          {
+            "at": 1792354328.5833766,
+            "event": "migration",
+            "stage": "SECURITY_NOT_ATTEMPTED",
+            "state": "POST_GRAD_OBSERVATION",
+            "reason": "Recovered Pump instruction; instruction=migrate_v2; slot=458563100; signature=29igkZUQ2FVYGGJ2V4SYUAALdzKnAVhUMHHVXraZQBhrCF27Lri33gD68mVVihmPSVWvpqmhptCoNqo6sPZ1hAzZ"
+          },
+          {
+            "at": 1792354330.7817295,
+            "event": "security_attempt",
+            "stage": "SECURITY_PENDING",
+            "state": "POST_GRAD_OBSERVATION",
+            "reason": "Pool hints: 1; migration hint in inspected first two: True"
+          },
+          {
+            "at": 1792354334.8638706,
+            "event": "security_result_queued",
+            "stage": "SECURITY_PENDING",
+            "state": "POST_GRAD_OBSERVATION",
+            "reason": "quality=VERIFIED; verified pools returned=1"
+          },
+          {
+            "at": 1792354334.864225,
+            "event": "transition",
+            "stage": "LIFECYCLE_INELIGIBLE",
+            "state": "REJECTED",
+            "reason": "Unacceptable concentration: top_1_independent_pct; Unacceptable concentration: top_5_independent_pct; Current continuous trade/buyer evidence required"
+          },
+          {
+            "at": 1792354334.8999078,
+            "event": "security",
+            "stage": "LIFECYCLE_INELIGIBLE",
+            "state": "REJECTED",
+            "reason": "Security evidence applied"
+          },
+          {
+            "at": 1792354635.1145384,
+            "event": "transition",
+            "stage": "LIFECYCLE_INELIGIBLE",
+            "state": "EXPIRED",
+            "reason": "Inactive candidate expired"
+          },
+          {
+            "at": 1792354778.194958,
+            "event": "removed",
+            "stage": "NO_LONGER_TRACKED",
+            "state": "EXPIRED",
+            "reason": "Candidate no longer tracked"
+          }
+        ]
+      }
+    ]
+  },
+  "pumpswap_flow": {
+    "messages": 0,
+    "acks": 0,
+    "reconnects": 0,
+    "errors": 0,
+    "buy_events": 0,
+    "sell_events": 0,
+    "accepted": 0,
+    "invalid_units": 0,
+    "duplicates": 0,
+    "decode_failures": 0,
+    "token_local_gaps": 0,
+    "truncations": 0,
+    "eligible_pools": 0,
+    "subscribed_pools": 0,
+    "capacity_limited": 0,
+    "last_success": 0,
+    "enabled": true,
+    "connected": true,
+    "attempted": true,
+    "connected_since": 1792354179.047147,
+    "capacity": 25,
+    "normal_trade_http_requests": 0,
+    "failure_categories": {
+      "truncated": 0,
+      "unsupported_layout": 0,
+      "invalid_bool": 0,
+      "invalid_string": 0,
+      "invalid_pubkey": 0,
+      "invalid_timestamp_value": 0,
+      "invalid_encoding": 0,
+      "invocation_framing": 0,
+      "pool_identity": 0,
+      "notification": 0
+    },
+    "evidence_counts": {
+      "CURRENT": 0,
+      "PARTIAL": 0,
+      "UNAVAILABLE": 0
+    }
+  },
+  "truncation_recovery": {
+    "requests": 371,
+    "successful_requests": 371,
+    "errors": 0,
+    "rate_limits": 0,
+    "deduplicated": 0,
+    "peak_pending": 32,
+    "overflow": 27,
+    "global_gaps": 29,
+    "token_local_gaps": 30,
+    "classifications": {
+      "UNTRACKED_CONFIRMED": 339,
+      "TRACKED_AFFECTED": 30,
+      "UNSUPPORTED_PUMP_TRADE": 2,
+      "TRANSACTION_UNAVAILABLE": 0,
+      "TRANSACTION_FAILED": 0,
+      "MALFORMED": 0
+    },
+    "unsupported_instruction_counts": {
+      "multi_hop_curve_swap": 0,
+      "unknown_discriminator": 0,
+      "other": 2
+    },
+    "multi_hop_curve_swap_observed": 23,
+    "multi_hop_routes_resolved": 23,
+    "multi_hop_untracked_confirmed": 19,
+    "multi_hop_tracked_affected": 0,
+    "multi_hop_unresolved": 0,
+    "multi_hop_ambiguous": 0,
+    "recovered_migrate_instruction": 0,
+    "recovered_migrate_v2_instruction": 4,
+    "recovered_migration_tracked_mint": 1,
+    "recovered_migration_untracked_mint": 3,
+    "recovered_migration_emitted": 1,
+    "recovered_migration_duplicate": 0,
+    "recovered_migration_invalid_layout": 0,
+    "recovered_migration_queue_dropped": 0,
+    "recovered_migration_invalid_time": 0,
+    "recovered_migration_unproven_cpi": 0,
+    "recovered_migration_chain_age_accepted": 0,
+    "recovered_migration_recovery_freshness_rejected": 0,
+    "recovered_migration_recovery_window_rejected": 0,
+    "recovered_migration_missing_freshness_provenance": 0,
+    "recovered_migration_last_ages": {
+      "chain_age_seconds_at_process": 4.583,
+      "recovery_age_seconds_at_process": 0.042,
+      "recovery_duration_seconds": 0.726
+    },
+    "instruction_counts": {
+      "add_quote_control_mint": 0,
+      "add_quote_mint": 0,
+      "admin_cto": 0,
+      "admin_set_idl_authority": 0,
+      "admin_update_token_incentives": 0,
+      "buy": 0,
+      "buy_exact_quote_in_v2": 92,
+      "buy_exact_quote_in_v3": 32,
+      "buy_exact_sol_in": 12,
+      "buy_v2": 16,
+      "buy_v3": 88,
+      "claim_cashback": 0,
+      "claim_cashback_v2": 0,
+      "claim_token_incentives": 0,
+      "close_user_volume_accumulator": 58,
+      "collect_creator_fee": 0,
+      "collect_creator_fee_v2": 8,
+      "create": 0,
+      "create_v2": 64,
+      "distribute_creator_fees": 3,
+      "distribute_creator_fees_v2": 0,
+      "distribute_fee_to_holders": 7,
+      "extend_account": 8,
+      "get_minimum_distributable_fee": 0,
+      "init_user_volume_accumulator": 61,
+      "initialize": 0,
+      "initialize_quote_control": 0,
+      "migrate": 0,
+      "migrate_bonding_curve_creator": 3,
+      "migrate_v2": 4,
+      "multi_hop_curve_swap": 23,
+      "remove_quote_control_mint": 0,
+      "remove_quote_mint": 0,
+      "sell": 4,
+      "sell_v2": 13,
+      "sell_v3": 11,
+      "set_creator": 0,
+      "set_max_curve_depth": 0,
+      "set_mayhem_virtual_params": 0,
+      "set_metaplex_creator": 0,
+      "set_params": 0,
+      "set_quote_control_admin": 0,
+      "set_quote_control_mint_reserves": 0,
+      "set_quote_control_reserves_admin": 0,
+      "set_reserved_fee_recipients": 0,
+      "set_virtual_quote_reserves": 0,
+      "sweep_creator_fee": 6,
+      "sweep_protocol_fee": 0,
+      "sync_user_volume_accumulator": 0,
+      "toggle_cashback_enabled": 0,
+      "toggle_create_v2": 0,
+      "toggle_mayhem_mode": 0,
+      "update_buyback_config": 0,
+      "update_creator_fee_config": 0,
+      "update_global_authority": 0,
+      "update_holder_reward_config": 0
+    },
+    "instruction_histogram_transactions": 371,
+    "pending": 0,
+    "oldest_pending_age": 0,
+    "coverage_state": "RESOLVED"
+  },
+  "rpc_requests": 421,
+  "ordinary_monitoring_rpc_requests": 50,
+  "rss_mb": 138.9,
+  "average_process_cpu_pct": 25.7,
+  "peak_samples": {
+    "rss_mb": 138.9,
+    "queue_size": 37,
+    "active": 242,
+    "hot": 25,
+    "background": 179,
+    "cpu_pct": 113.8
+  },
+  "queue_size": 0,
+  "dropped_trade_events": 0,
+  "dropped_critical_events": 0,
+  "trade_http_requests": 0,
+  "opportunity_counts": {
+    "EARLY_OPPORTUNITY": 0,
+    "DEVELOPING": 151,
+    "PULLBACK_WATCH": 2,
+    "TOO_EXTENDED": 0,
+    "AVOID": 34,
+    "DATA_LIMITED": 51
+  },
+  "companion_actions": {
+    "ENTRY_CANDIDATE": 0,
+    "WAIT": 231,
+    "REJECT": 7,
+    "TOO_LATE": 0
+  },
+  "paper_cash": 20,
+  "queue_lag": {
+    "peak_depth": 79,
+    "oldest_event_age": 0,
+    "oldest_trade_age": 0,
+    "oldest_queue_wait": 0,
+    "stale_while_queued": 3,
+    "trades_stale_while_queued": 3,
+    "accepted_trades": 6005,
+    "accepted_trade_rate": 9.961818720851742
+  },
+  "pump": {
+    "messages": 154645,
+    "launch_events": 278,
+    "migration_events": 0,
+    "log_truncation_notifications": 398,
+    "reconnects": 5
+  },
+  "rpc_errors": {
+    "errors": 0,
+    "rate_limits": 0
+  },
+  "full_report_path": "data/observe/recovered-migration-freshness-20261018T200927Z.json",
+  "full_report_sha256": "bb593ba9e602f5cafd7fb3654eeeb271d058552e30913003551d8f2b0a652c26",
+  "base_commit": "a6a731d194f1ad64cbdc2e6ea793357a2b457368",
+  "live_limitations": [
+    "Only tracked recovery chain age 4.583 seconds: over-20-second acceptance covered deterministically, not observed live.",
+    "Independently verified pool rejected by existing top-1/top-5 concentration gates before subscription; no PumpSwap flow validation."
+  ]
+}

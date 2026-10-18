@@ -152,8 +152,8 @@ def test_inner_migration_not_invented_when_cpi_success_unproven(tmp_path):
     e.db.engine.dispose()
 
 
-@pytest.mark.parametrize("age,accepted", [(2, True), (21, False)])
-def test_fresh_recovered_migration_can_follow_newer_observation_without_relaxing_age(tmp_path, age, accepted):
+@pytest.mark.parametrize("age,accepted", [(2, True), (21, True)])
+def test_recovered_migration_can_follow_newer_observation_with_fresh_acquisition(tmp_path, age, accepted):
     tx, sig, mint, _, _ = fixture()
     now = time.time()
     tx["blockTime"] = now - age
@@ -165,7 +165,7 @@ def test_fresh_recovered_migration_can_follow_newer_observation_without_relaxing
     transaction_impact(tx, sig, 123, lambda m: True, migrations=migrations)
     e.recovery.emit_migrations(Recovery(sig, 123, now), tx, migrations)
     event = e.queue.drain()[0]
-    assert e.process(event, now) is accepted
+    assert e.process(event, max(now, event.evidence["recovery_verified_at"])) is accepted
     assert bool(t.graduation) is accepted
     assert t.last_event == now
     assert e.settings.max_data_age_seconds == 20

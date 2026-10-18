@@ -196,3 +196,10 @@ bounded lifecycle exit reasons, security inspection hints/results, independent
 pool verification, capacity/ACK and flow-coverage blockers after candidate removal.
 See [handoff trace](postgrad-handoff-trace.md). This is diagnostics only and does
 not trigger scans or relax entry gates.
+
+Recovered canonical migration observations retain their real chain timestamp.
+Inspect the four lifecycle/acquisition-age counters and last age sample under
+`health.truncation_recovery` to distinguish old chain time from expired recovery
+evidence. The limits are 45 seconds from truncation to verification and 20 seconds
+from verification to processing; ordinary trade freshness and the 180-second
+post-grad window are unchanged. See [time semantics](recovered-migration-freshness.md).
