@@ -189,3 +189,10 @@ Candidate cards identify PRE-GRAD FLOW versus POST-GRAD PUMPSWAP FLOW.
 A missing pool, capacity limit, disconnect or local event loss keeps evidence
 incomplete. The existing scan cadence/backoff is unchanged; public-RPC delays
 can postpone pool eligibility. See [provider details](providers/pumpswap-flow.md).
+
+For a migration that produces no eligible PumpSwap pool, inspect
+`health.postgrad_handoff` (or `postgrad_handoff` in the OBSERVE report). It retains
+bounded lifecycle exit reasons, security inspection hints/results, independent
+pool verification, capacity/ACK and flow-coverage blockers after candidate removal.
+See [handoff trace](postgrad-handoff-trace.md). This is diagnostics only and does
+not trigger scans or relax entry gates.

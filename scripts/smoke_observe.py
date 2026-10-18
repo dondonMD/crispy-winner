@@ -181,6 +181,7 @@ async def main(seconds=65, max_deep=25):
                 "postgrad_current_ranges": postgrad_ranges,
                 "postgrad_processed": postgrad_processed,
                 "migrations_processed": migrations,
+                "postgrad_handoff": snap["health"]["postgrad_handoff"],
                 "migration_process_rejections": migration_rejections,
                 "migration_lifecycle_counts": {state: sum(t.state.value == state for t in engine.tokens.values())
                     for state in ("GRADUATED", "POST_GRAD_OBSERVATION", "ENTRY_CANDIDATE")},

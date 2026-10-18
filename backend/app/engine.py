@@ -24,6 +24,8 @@ from backend.app.truncation import TruncationRecovery
 from backend.app.pumpswap import PumpSwapFlow, VerifiedPool
 from backend.app.resources import ResourceMonitor
 from backend.app.intelligence import Intelligence
+from backend.app.handoff import HandoffTrace
+from backend.app.pumpswap import QUOTES
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +66,8 @@ class RadarEngine:
         self.tasks = []
         self.running = False
         self.processed = 0
+        self.handoff = HandoffTrace()
+        self.last_handoff_sample = 0.0
         self.trade_observations = {"buy": 0, "sell": 0}
         self.trade_continuity: dict[str, Any] = {"global_resets": 0, "per_token_resets": 0,
                                  "per_token_reasons": dict.fromkeys(("decode", "stale", "queue", "buffer", "recovery"), 0)}
@@ -236,6 +240,8 @@ class RadarEngine:
 
     def transition(self, token, state, reason, now):
         previous = token.transition(state)
+        if token.graduation:
+            self.trace_handoff(token, now, "transition", reason)
         self.db.add(
             "transition",
             {"previous": previous.value, "new": state.value, "reason": reason, "scores": token.scores},
@@ -453,6 +459,11 @@ class RadarEngine:
                 event.ts,
             )
         self.analyse(token, event.ts)
+        if token.graduation and event.kind in ("migration", "security"):
+            detail = (f"{event.source}; instruction={event.evidence.get('instruction', 'visible event')}; "
+                      f"slot={event.evidence.get('slot')}; signature={event.signature}" if event.kind == "migration"
+                      else "Security evidence applied")
+            self.trace_handoff(token, now, event.kind, detail)
         if not self.metrics.get("storage_full"):
             self.collector.observe(token, event)
         self.paper.observe(token, event.ts)
@@ -832,6 +843,9 @@ class RadarEngine:
             }
             if token.migration_pool:
                 known.add(token.migration_pool)
+            if token.graduation:
+                self.trace_handoff(token, now, "security_attempt",
+                    f"Pool hints: {len(known)}; migration hint in inspected first two: {token.migration_pool in sorted(known)[:2]}")
             try:
                 report = await self.rpc.inspect(token.mint, token.creator, known)
             except (RuntimeError, ValueError, KeyError, TypeError):
@@ -842,6 +856,9 @@ class RadarEngine:
                     "warnings": ["Security refresh failed"],
                     "last_updated": time.time(),
                 }
+            if token.graduation:
+                self.trace_handoff(token, time.time(), "security_result_queued",
+                    f"quality={report.get('data_quality', 'UNKNOWN')}; verified pools returned={len(report.get('verified_pools', []))}")
             self.submit(
                 MarketEvent(
                     mint=token.mint,
@@ -1060,6 +1077,78 @@ class RadarEngine:
 
         return companion_examples(self.settings, now)
 
+    def trace_handoff(self, token, now, event="snapshot", reason="", eligible=None):
+        eligible = self.verified_flow_pools() if eligible is None else eligible
+        pools = [p for p in eligible if p.mint == token.mint]
+        selected = {p for p, record in self.pumpswap.pools.items() if record.mint == token.mint}
+        acked = selected.intersection(self.pumpswap.since)
+        verified = token.security.get("verified_pools", [])
+        matching = [p for p in verified if p.get("base_mint") == token.mint]
+        lifecycle = token.state in (State.GRADUATED, State.POST_GRAD_OBSERVATION, State.ENTRY_CANDIDATE)
+        f = token.features.get("180", {})
+        clean = self.trade_coverage_seconds(token, now) if token.graduation else 0
+        age = now - token.last_trade if token.last_trade else None
+        evidence = self.trade_status(token, now)
+        if not token.graduation:
+            stage = "MIGRATION_PENDING"
+        elif not lifecycle:
+            stage = "LIFECYCLE_INELIGIBLE"
+        elif token.flow_venue != "PUMPSWAP":
+            stage = "VENUE_NOT_PUMPSWAP"
+        elif not pools:
+            stage = ("MIGRATION_POOL_HINT_MISSING" if not token.migration_pool else
+                     "SECURITY_NOT_ATTEMPTED" if not token.last_security_attempt else
+                     "SECURITY_PENDING" if token.last_security < token.last_security_attempt else
+                     "POOL_NOT_VERIFIED" if not matching else "POOL_IDENTITY_INCOMPLETE")
+        elif not self.pumpswap.health["connected"]:
+            stage = "WSS_DISCONNECTED"
+        elif any(p.address not in selected for p in pools):
+            desired = {p.address for p in eligible[:self.pumpswap.capacity]}
+            stage = "CAPACITY_LIMITED" if any(p.address not in desired for p in pools) else "SELECTION_PENDING"
+        elif any(p.address not in acked for p in pools):
+            stage = "ACK_PENDING"
+        elif any(p.quote_mint not in QUOTES for p in pools):
+            stage = "QUOTE_UNITS_UNAVAILABLE"
+        elif clean < 180:
+            stage = "COVERAGE_BUILDING"
+        elif f.get("samples", 0) < 3:
+            stage = "SAMPLES_INSUFFICIENT"
+        elif not f.get("units_valid"):
+            stage = "TRADE_UNITS_UNAVAILABLE"
+        elif age is None or not 0 <= age <= self.settings.max_data_age_seconds:
+            stage = "TRADE_STALE"
+        else:
+            stage = "CURRENT" if evidence == "CURRENT" else "INCOMPLETE_EVIDENCE"
+        self.handoff.observe({"mint": token.mint, "state": token.state.value, "stage": stage,
+            "mode": self.settings.mode, "simulated": self.settings.mode == "DEMO",
+            "migration_pool": token.migration_pool, "graduation_at": token.graduation,
+            "flow_epoch": token.flow_epoch, "flow_venue": token.flow_venue,
+            "security_quality": str(token.security.get("data_quality", "UNKNOWN"))[:32],
+            "security_attempt_at": token.last_security_attempt, "security_applied_at": token.last_security,
+            "verified_pool_count": len(verified), "matching_base_pool_count": len(matching),
+            "migration_pool_verified": any(p.get("address") == token.migration_pool for p in matching),
+            "eligible_pool_count": len(pools), "selected_pool_count": len(selected), "acked_pool_count": len(acked),
+            "wss_connected": self.pumpswap.health["connected"], "coverage_seconds": round(clean, 2),
+            "samples": f.get("samples", 0), "units_valid": bool(f.get("units_valid")),
+            "last_trade_age": round(age, 2) if age is not None else None, "trade_evidence": evidence,
+            "decision": token.decision.get("decision"),
+            "decision_reasons": [str(r)[:240] for r in token.decision.get("reasons", [])[:8]],
+            "security_failures": [str(r)[:240] for r in token.security.get("hard_failures", [])[:8]],
+            "security_warnings": [str(r)[:240] for r in token.security.get("warnings", [])[:8]]}, now, event, reason)
+
+    def handoff_snapshot(self, now):
+        if now - self.last_handoff_sample >= 1:
+            eligible = self.verified_flow_pools()
+            if not self.handoff.records:
+                candidates = sorted((t for t in self.tokens.values() if t.graduation),
+                                    key=lambda t: t.priority(), reverse=True)[:self.handoff.maximum]
+            else:
+                candidates = [self.tokens[mint] for mint in self.handoff.records if mint in self.tokens]
+            for token in candidates:
+                self.trace_handoff(token, now, eligible=eligible)
+            self.last_handoff_sample = now
+        return self.handoff.snapshot(self.tokens, now)
+
     def verified_flow_pools(self):
         result = []
         for token in sorted(self.tokens.values(), key=lambda t: t.priority(), reverse=True):
@@ -1243,6 +1332,7 @@ class RadarEngine:
                 "queue_limit": self.queue.maximum,
                 "queue_lag": self.queue.snapshot(now),
                 "truncation_recovery": self.recovery.snapshot(),
+                "postgrad_handoff": self.handoff_snapshot(now),
                 "dropped_events": self.queue.dropped,
                 "trade_observations": self.trade_observations,
                 "processed_trade_rate": sum(self.trade_observations.values()) / max(1, now - self.queue.created),
