@@ -26,6 +26,7 @@ async def main(seconds=65, max_deep=25):
                            ("buy_count", "sell_count", "estimated_independent_buyers", "flow_ratio", "whale_share", "samples", "coverage_seconds")}
         postgrad_processed = {"buy": 0, "sell": 0}
         migrations = 0
+        migration_rejections = {"stale": 0, "other": 0}
         curve_attempts = 0
         successes = 0
         launch_count = 0
@@ -61,6 +62,9 @@ async def main(seconds=65, max_deep=25):
         def counted_process(event, now=None):
             nonlocal launch_count, migrations
             accepted = original_process(event, now)
+            if event.kind == "migration" and not accepted:
+                reason = "stale" if abs((now if now is not None else event.ts) - event.ts) > engine.settings.max_data_age_seconds else "other"
+                migration_rejections[reason] += 1
             if event.kind == "trade" and not accepted:
                 reason = "stale" if abs((now if now is not None else event.ts) - event.ts) > engine.settings.max_data_age_seconds else "other"
                 trade_rejections[reason] += 1
@@ -177,6 +181,9 @@ async def main(seconds=65, max_deep=25):
                 "postgrad_current_ranges": postgrad_ranges,
                 "postgrad_processed": postgrad_processed,
                 "migrations_processed": migrations,
+                "migration_process_rejections": migration_rejections,
+                "migration_lifecycle_counts": {state: sum(t.state.value == state for t in engine.tokens.values())
+                    for state in ("GRADUATED", "POST_GRAD_OBSERVATION", "ENTRY_CANDIDATE")},
                 "pregrad_evidence_counts": {status: sum(t.flow_venue != "PUMPSWAP" and engine.trade_status(t) == status
                     for t in engine.tokens.values()) for status in ("CURRENT", "PARTIAL", "UNAVAILABLE")},
                 "current_evidence_ranges": current_ranges,

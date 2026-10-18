@@ -13,7 +13,7 @@ from typing import Any
 from solders.pubkey import Pubkey
 
 from backend.app.discovery import PUMP_PROGRAM
-from backend.app.domain import Deduplicator
+from backend.app.domain import Deduplicator, MarketEvent
 from backend.app import pump_amm_recovery as multi_hop
 
 SCHEMA = json.loads(Path(__file__).with_name("pump_instructions.json").read_text())
@@ -39,7 +39,34 @@ def decode_base58(value):
     return b"\0" * (len(value) - len(value.lstrip("1"))) + number.to_bytes((number.bit_length() + 7) // 8, "big")
 
 
-def transaction_impact(result, signature, slot, tracked, diagnostics=None):
+MIGRATION_NAMES = {"migrate", "migrate_v2"}
+WSOL = "So11111111111111111111111111111111111111112"
+MIGRATION_COUNTERS = ("recovered_migrate_instruction", "recovered_migrate_v2_instruction",
+    "recovered_migration_tracked_mint", "recovered_migration_untracked_mint", "recovered_migration_emitted",
+    "recovered_migration_duplicate", "recovered_migration_invalid_layout", "recovered_migration_queue_dropped",
+    "recovered_migration_invalid_time", "recovered_migration_unproven_cpi")
+
+
+def migration_identity(definition, accounts, keys, data, ordinal):
+    # Account names/layout come exclusively from the existing pinned official IDL.
+    if len(data) != 8 or len(accounts) < len(definition["accounts"]):
+        raise ValueError("migration layout")
+    named = {a["name"]: keys[accounts[i]] for i, a in enumerate(definition["accounts"])}
+    mint = named["mint" if definition["name"] == "migrate" else "base_mint"]
+    quote = named["wsol_mint"] if definition["name"] == "migrate" else named["quote_mint"]
+    for address in (mint, quote, named["pool"]):
+        if Pubkey.from_string(address) == Pubkey.default():
+            raise ValueError("default migration key")
+    curve = str(Pubkey.find_program_address([b"bonding-curve", bytes(Pubkey.from_string(mint))],
+                                           Pubkey.from_string(PUMP_PROGRAM))[0])
+    if (named["bonding_curve"] != curve or named["pump_amm"] != multi_hop.PROGRAM
+            or definition["name"] == "migrate" and quote != WSOL):
+        raise ValueError("migration identity")
+    return {"mint": mint, "pool": named["pool"], "quote_mint": quote,
+            "instruction": definition["name"], "instruction_ordinal": ordinal}
+
+
+def transaction_impact(result, signature, slot, tracked, diagnostics=None, migrations=None):
     """Validate legacy/v0/v1 compiled instruction identities, including complete CPI data."""
     try:
         if result["slot"] != slot or type(result["slot"]) is not int:
@@ -110,6 +137,8 @@ def transaction_impact(result, signature, slot, tracked, diagnostics=None):
         if len(outer) + sum(len(g["instructions"]) for g in inner) > 2048:
             raise ValueError("total instructions")
         contexts = multi_hop.invocations(outer, inner)
+        staged_migrations = []
+        staged_histogram: dict[str, int] = {}
         calls = []
         routes = {}
         affected = set()
@@ -137,6 +166,19 @@ def transaction_impact(result, signature, slot, tracked, diagnostics=None):
                                 subtype="other" if data[:8] == EVENT_CPI else "unknown_discriminator")
                 unsupported = True
                 continue
+            name = definition["name"]
+            staged_histogram[name] = staged_histogram.get(name, 0) + 1
+            if name in MIGRATION_NAMES:
+                if diagnostics is not None:
+                    diagnostics[f"recovered_{name}_instruction"] = diagnostics.get(f"recovered_{name}_instruction", 0) + 1
+                try:
+                    migration = migration_identity(definition, accounts, keys, data, identity)
+                except (ValueError, KeyError, IndexError):
+                    if diagnostics is not None:
+                        diagnostics["recovered_migration_invalid_layout"] = diagnostics.get("recovered_migration_invalid_layout", 0) + 1
+                    raise
+                migration["inner"] = is_inner
+                staged_migrations.append(migration)
             if definition["name"] == "multi_hop_curve_swap":
                 multi_hop.count(diagnostics, "multi_hop_curve_swap_observed")
                 calls.append((identity, data))
@@ -159,6 +201,14 @@ def transaction_impact(result, signature, slot, tracked, diagnostics=None):
             unresolved, curve_mints = multi_hop.resolve(calls, routes, contexts, keys, tracked, definition, diagnostics)
             unsupported |= unresolved
             affected.update(curve_mints)
+        if diagnostics is not None:
+            histogram = diagnostics.get("instruction_counts")
+            if histogram is not None:
+                for name, count in staged_histogram.items():
+                    histogram[name] += count
+                diagnostics["instruction_histogram_transactions"] += 1
+        if migrations is not None:
+            migrations.extend(staged_migrations)
         if unsupported:
             return "UNSUPPORTED_PUMP_TRADE", set()
         if calls:
@@ -182,7 +232,9 @@ class TruncationRecovery:
     MAX_ATTEMPTS = 3
     MAX_AGE = 45
 
-    def __init__(self, rpc, tracked, local_gap, global_gap, changed):
+    def __init__(self, rpc, tracked, local_gap, global_gap, changed, emit_migration=None):
+        self.emit_migration = emit_migration
+        self.migration_seen = Deduplicator(10000)
         self.rpc, self.tracked = rpc, tracked
         self.local_gap, self.global_gap, self.changed = local_gap, global_gap, changed
         self.pending: OrderedDict[str, Recovery] = OrderedDict()
@@ -190,7 +242,9 @@ class TruncationRecovery:
         self.health: dict[str, Any] = {"requests": 0, "successful_requests": 0, "errors": 0, "rate_limits": 0,
                        "deduplicated": 0, "peak_pending": 0, "overflow": 0, "global_gaps": 0,
                        "token_local_gaps": 0, "classifications": dict.fromkeys(CLASSIFICATIONS, 0),
-                       **multi_hop.diagnostics()}
+                       **multi_hop.diagnostics(), **dict.fromkeys(MIGRATION_COUNTERS, 0),
+                       "instruction_counts": dict.fromkeys((i["name"] for i in INSTRUCTIONS.values()), 0),
+                       "instruction_histogram_transactions": 0}
 
     def submit(self, signature, slot, observed):
         if not self.seen.accept(signature):
@@ -225,6 +279,41 @@ class TruncationRecovery:
         self.pending.pop(recovery.signature, None)
         self.changed()
 
+    def emit_migrations(self, recovery, result, migrations):
+        for identity in migrations:
+            # A successful transaction does not prove a caught inner CPI succeeded.
+            # Without complete execution status we may count its instruction, never invent its lifecycle.
+            if identity["inner"]:
+                self.health["recovered_migration_unproven_cpi"] += 1
+                continue
+            mint = identity["mint"]
+            if not self.tracked(mint):
+                self.health["recovered_migration_untracked_mint"] += 1
+                continue
+            self.health["recovered_migration_tracked_mint"] += 1
+            block_time = result.get("blockTime")
+            if block_time is None:
+                # Confirmed notification observation is an upper bound, never a claim of exact chain time.
+                stamp, basis = recovery.observed, "confirmed_notification_observed_upper_bound"
+            else:
+                stamp, basis = block_time, "getTransaction.blockTime"
+            if (type(stamp) not in (int, float) or not 1_500_000_000 <= stamp <= time.time() + 20
+                    or stamp > recovery.observed + 20):
+                self.health["recovered_migration_invalid_time"] += 1
+                continue
+            event_id = f"{recovery.signature}:migration:{mint}"
+            if not self.migration_seen.accept(event_id):
+                self.health["recovered_migration_duplicate"] += 1
+                continue
+            event = MarketEvent(mint=mint, kind="migration", ts=stamp, source="Recovered Pump instruction",
+                event_id=event_id, signature=recovery.signature, pair=identity["pool"],
+                evidence={**identity, "data_quality": "VERIFIED", "identity_quality": "VERIFIED",
+                    "slot": recovery.slot, "commitment": "confirmed", "program": PUMP_PROGRAM,
+                    "schema_source": SCHEMA["source"], "time_basis": basis,
+                    "truncation_observed_at": recovery.observed})
+            outcome = self.emit_migration(event) if self.emit_migration else "queue_dropped"
+            self.health[f"recovered_migration_{outcome}"] += 1
+
     async def step(self):
         # Single worker / one RPC in flight. Shared provider limiter and pressure apply.
         now = time.time()
@@ -242,7 +331,9 @@ class TruncationRecovery:
         except (RuntimeError, ValueError, OSError):
             result = None
         if result is not None:
-            classification, affected = transaction_impact(result, recovery.signature, recovery.slot, self.tracked, self.health)
+            migrations: list[dict] = []
+            classification, affected = transaction_impact(result, recovery.signature, recovery.slot, self.tracked, self.health, migrations)
+            self.emit_migrations(recovery, result, migrations)
             self.resolve(recovery, classification, affected)
         elif recovery.attempts >= self.MAX_ATTEMPTS:
             self.resolve(recovery, "TRANSACTION_UNAVAILABLE")

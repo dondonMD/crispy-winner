@@ -312,3 +312,11 @@ Verified migrated pools now use the separate bounded
 and truncation identity recovery remain unchanged. Their trades and clean
 coverage cannot supply a post-grad CURRENT window; their global gaps likewise
 do not erase an independently observed PumpSwap window.
+
+## Truncated migration lifecycle evidence
+
+Truncation recovery now also identifies successful canonical Pump migrate and
+migrate_v2 instructions for tracked mints, using named accounts from the existing
+IDL pin. Recovered identity feeds the existing migration processor; independent
+pool verification remains mandatory. Visible migration counts stay separate.
+See [proof, bounded counters and the 300-second diagnostic](../migration-recovery.md).

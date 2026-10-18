@@ -124,3 +124,10 @@ Transport loss, existing queue lag and rolling-buffer loss may also prevent
 180 clean seconds. Pre-grad flow is retained only as bounded history after
 migration and never supplies post-grad evidence. Fresh flow cannot replace
 security, economics or approved prospective historical evidence.
+
+Truncated Pump migration instructions now supply tracked lifecycle observations
+through the existing processor. This does not make a recovered pool independently
+verified or its trade flow current. Missing transaction time uses a labelled
+confirmed-observation upper bound; the original 20-second freshness check can
+reject delayed recovery. Inner migration CPIs without provable success remain
+counted but cannot emit lifecycle evidence. See [migration recovery](migration-recovery.md).

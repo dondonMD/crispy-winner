@@ -43,6 +43,7 @@ class RadarEngine:
         self.creators: OrderedDict = OrderedDict()
         self.dedup = Deduplicator()
         self.launch_dedup = Deduplicator()
+        self.migration_submissions = Deduplicator()
         self.duplicate_discoveries = 0
         self.costs = TradeCostEstimator(settings)
         self.sizer = PositionSizer(settings, self.costs)
@@ -79,6 +80,7 @@ class RadarEngine:
         self.recovery = TruncationRecovery(
             self.rpc, lambda mint: mint in self.tokens, self.invalidate_pump_token_coverage,
             lambda: self.onchain.global_gap("truncation_recovery"), self.refresh_trade_continuity,
+            emit_migration=self.submit_recovered_migration,
         )
         self.onchain = OnchainPumpDiscovery(
             self.submit, tracked=lambda mint: mint in self.tokens, on_gap=self.invalidate_trade_coverage,
@@ -194,7 +196,17 @@ class RadarEngine:
         ranked = protected + [t.mint for t in eligible if t.mint not in protected]
         return ranked[: max(1, limit)]
 
+    def submit_recovered_migration(self, event):
+        if (event.mint not in self.tokens or event.event_id in self.dedup.seen
+                or event.event_id in self.migration_submissions.seen):
+            return "duplicate"
+        return "emitted" if self.submit(event) else "queue_dropped"
+
     def submit(self, event):
+        if event.kind == "migration" and event.signature:
+            identity = f"{event.signature}:migration:{event.mint}"
+            if identity in self.dedup.seen or identity in self.migration_submissions.seen:
+                return False
         token = self.tokens.get(event.mint)
         priority = token.priority()[0] if token else 5
         if event.kind in ["migration", "security"]:
@@ -204,6 +216,8 @@ class RadarEngine:
         if event.kind == "trade":
             priority = min(80, priority)
         accepted = self.queue.put(event, priority)
+        if accepted and event.kind == "migration" and event.signature:
+            self.migration_submissions.accept(f"{event.signature}:migration:{event.mint}")
         for mint, stamp in self.queue.trade_gaps.items():
             if mint in self.tokens:
                 self.invalidate_token_trade_coverage(mint, reason="queue", now=stamp)
@@ -311,7 +325,10 @@ class RadarEngine:
         token = self.tokens.get(event.mint) or self.admit(event)
         if token is None:
             return False
-        if event.ts < token.last_event and not (event.kind == "trade" and event.source in ("Solana WSS", "PumpSwap WSS")):
+        recovered_migration = (event.kind == "migration" and event.source == "Recovered Pump instruction"
+            and event.evidence.get("identity_quality") == "VERIFIED"
+            and event.evidence.get("instruction") in ("migrate", "migrate_v2"))
+        if event.ts < token.last_event and not recovered_migration and not (event.kind == "trade" and event.source in ("Solana WSS", "PumpSwap WSS")):
             token.degraded = True
             self.out_of_order += 1
             return False
