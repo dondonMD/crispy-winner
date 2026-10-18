@@ -133,3 +133,7 @@ fresh acquisition evidence within 20 seconds after verification and a recovery
 duration at most 45 seconds; chain occurrence time is retained. See
 [the time-separation rules](recovered-migration-freshness.md). Inner migration CPIs without provable success remain
 counted but cannot emit lifecycle evidence. See [migration recovery](migration-recovery.md).
+
+Truncation recovery uses at most two shared-provider workers and 32 total pending
+entries. Saturation or expiry still causes fail-closed gaps; concurrency cannot
+raise provider capacity. See [scheduling measurements](truncation-recovery-pressure.md).

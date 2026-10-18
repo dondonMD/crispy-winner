@@ -17,6 +17,7 @@ from solders.pubkey import Pubkey
 from backend.app.discovery import PUMP_PROGRAM
 from backend.app.domain import Deduplicator, MarketEvent
 from backend.app import pump_amm_recovery as multi_hop
+from backend.app.recovery_metrics import RecoveryMetrics
 
 SCHEMA = json.loads(Path(__file__).with_name("pump_instructions.json").read_text())
 INSTRUCTIONS = {bytes(i["discriminator"]): i for i in SCHEMA["instructions"]}
@@ -227,6 +228,7 @@ class Recovery:
     observed: float
     attempts: int = 0
     next_attempt: float = 0
+    first_rpc: bool = False
 
 
 MIGRATION_AGE_COUNTERS = ("recovered_migration_chain_age_accepted",
@@ -240,6 +242,7 @@ def migration_digest(event):
 
 
 class TruncationRecovery:
+    MAX_RECOVERY_IN_FLIGHT = 2
     MAX_PENDING = 32
     MAX_ATTEMPTS = 3
     MAX_AGE = 45
@@ -252,7 +255,15 @@ class TruncationRecovery:
         self.local_gap, self.global_gap, self.changed = local_gap, global_gap, changed
         self.pending: OrderedDict[str, Recovery] = OrderedDict()
         self.seen = Deduplicator(10000)
+        self.metrics = RecoveryMetrics()
+        self.rpc.recovery_observer = self
+        self.in_flight = 0
+        self.claimed: set[str] = set()
+        self.rpc_in_flight = 0
         self.health: dict[str, Any] = {"requests": 0, "successful_requests": 0, "errors": 0, "rate_limits": 0,
+                       "submitted": 0, "accepted": 0, "expired": 0, "completed": 0,
+                       "maximum_in_flight": 0, "maximum_rpc_in_flight": 0, "first_attempt_successes": 0, "monitoring_requests_with_backlog": 0,
+                       "recovery_requests_with_backlog": 0, "attempts_distribution": dict.fromkeys((0, 1, 2, 3), 0),
                        "deduplicated": 0, "peak_pending": 0, "overflow": 0, "global_gaps": 0,
                        "token_local_gaps": 0, "classifications": dict.fromkeys(CLASSIFICATIONS, 0),
                        **multi_hop.diagnostics(), **dict.fromkeys(MIGRATION_COUNTERS + MIGRATION_AGE_COUNTERS, 0),
@@ -261,6 +272,8 @@ class TruncationRecovery:
                        "instruction_histogram_transactions": 0}
 
     def submit(self, signature, slot, observed):
+        self.health["submitted"] += 1
+        self.metrics.tick("arrivals")
         if not self.seen.accept(signature):
             self.health["deduplicated"] += 1
             return
@@ -269,19 +282,33 @@ class TruncationRecovery:
             self.health["global_gaps"] += 1
             self.global_gap()
             return
+        self.health["accepted"] += 1
         self.pending[signature] = Recovery(signature, slot, observed)
         self.health["peak_pending"] = max(self.health["peak_pending"], len(self.pending))
         self.changed()
+
+    def rpc_started(self, signature):
+        recovery = self.pending.get(signature)
+        if recovery is not None and not recovery.first_rpc:
+            recovery.first_rpc = True
+            self.metrics.sample("queue_wait", time.time() - recovery.observed)
 
     def overlaps(self, token, now, seconds=180):
         return any(r.observed >= max(now - seconds, token.trade_tracking_since) for r in self.pending.values())
 
     def snapshot(self):
-        return {**self.health, **self.rpc.truncation_metrics, "pending": len(self.pending),
+        return {**self.health, **self.rpc.truncation_metrics, "scheduling": self.metrics.snapshot(),
+                "in_flight": self.in_flight, "pending": len(self.pending),
                 "oldest_pending_age": max((time.time() - r.observed for r in self.pending.values()), default=0),
                 "coverage_state": "PENDING RECOVERY" if self.pending else "RESOLVED"}
 
-    def resolve(self, recovery, classification, affected=()):
+    def resolve(self, recovery: Recovery, classification, affected=()):
+        if self.pending.get(recovery.signature) is not recovery:
+            return
+        self.health["completed"] += 1
+        self.health["attempts_distribution"][recovery.attempts] += 1
+        self.metrics.tick("completions")
+        self.metrics.sample("total_latency", time.time() - recovery.observed)
         self.health["classifications"][classification] += 1
         if classification == "TRACKED_AFFECTED":
             for mint in affected:
@@ -365,32 +392,65 @@ class TruncationRecovery:
             self.health[f"recovered_migration_{outcome}"] += 1
 
     async def step(self):
-        # Single worker / one RPC in flight. Shared provider limiter and pressure apply.
+        # Claims are made without an await; pending includes claimed work.
         now = time.time()
         for expired in list(self.pending.values()):
-            if now - expired.observed >= self.MAX_AGE:
+            if expired.signature not in self.claimed and now - expired.observed >= self.MAX_AGE:
+                self.health["expired"] += 1
                 self.resolve(expired, "TRANSACTION_UNAVAILABLE")
-        recovery = next((r for r in self.pending.values() if r.next_attempt <= now), None)
-        if recovery is None or not self.rpc.eligible():
+        if len(self.claimed) >= self.MAX_RECOVERY_IN_FLIGHT or not self.rpc.eligible():
             return
-        recovery.attempts += 1
-        try:
-            result = await self.rpc.rpc("getTransaction", [recovery.signature,
-                {"encoding": "json", "commitment": "confirmed", "maxSupportedTransactionVersion": 1}],
-                purpose="truncation")
-        except (RuntimeError, ValueError, OSError):
-            result = None
-        if result is not None:
-            migrations: list[dict] = []
-            classification, affected = transaction_impact(result, recovery.signature, recovery.slot, self.tracked, self.health, migrations)
-            self.emit_migrations(recovery, result, migrations)
-            self.resolve(recovery, classification, affected)
-        elif recovery.attempts >= self.MAX_ATTEMPTS:
+        recovery = next((r for r in self.pending.values()
+                         if r.signature not in self.claimed and r.next_attempt <= now), None)
+        if recovery is None:
+            return
+        if recovery.attempts >= self.MAX_ATTEMPTS:
             self.resolve(recovery, "TRANSACTION_UNAVAILABLE")
-        else:
-            recovery.next_attempt = time.time() + 2 ** recovery.attempts
+            return
+        self.claimed.add(recovery.signature)
+        recovery.attempts += 1
+        started = time.monotonic()
+        self.in_flight += 1
+        self.health["maximum_in_flight"] = max(self.health["maximum_in_flight"], self.in_flight)
+        try:
+            try:
+                result = await self.rpc.rpc("getTransaction", [recovery.signature,
+                    {"encoding": "json", "commitment": "confirmed", "maxSupportedTransactionVersion": 1}],
+                    purpose="truncation")
+            except (RuntimeError, ValueError, OSError):
+                result = None
+            if time.time() - recovery.observed >= self.MAX_AGE:
+                self.health["expired"] += 1
+                self.resolve(recovery, "TRANSACTION_UNAVAILABLE")
+            elif result is not None:
+                if recovery.attempts == 1:
+                    self.health["first_attempt_successes"] += 1
+                migrations: list[dict] = []
+                classification, affected = transaction_impact(result, recovery.signature, recovery.slot,
+                                                               self.tracked, self.health, migrations)
+                self.emit_migrations(recovery, result, migrations)
+                self.resolve(recovery, classification, affected)
+            elif recovery.attempts >= self.MAX_ATTEMPTS:
+                self.resolve(recovery, "TRANSACTION_UNAVAILABLE")
+            else:
+                recovery.next_attempt = time.time() + 2 ** recovery.attempts
+        finally:
+            self.claimed.discard(recovery.signature)
+            self.in_flight -= 1
+            self.metrics.sample("rpc_latency", time.monotonic() - started)
 
-    async def run(self):
+    async def _worker(self):
         while True:
             await self.step()
             await asyncio.sleep(0.1)
+
+    async def run(self):
+        # Two long-lived tasks, never one task per signature. The provider's shared
+        # FIFO semaphore, start limiter and cooldown remain authoritative.
+        workers = [asyncio.create_task(self._worker()) for _ in range(self.MAX_RECOVERY_IN_FLIGHT)]
+        try:
+            await asyncio.gather(*workers)
+        finally:
+            for worker in workers:
+                worker.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)

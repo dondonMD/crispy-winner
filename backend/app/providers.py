@@ -61,6 +61,7 @@ class HttpProvider:
     async def request(self, method, url, retry_attempts=3, accounting=None, **kwargs):
         retry_attempts = min(3, max(1, retry_attempts))
         for attempt in range(retry_attempts):
+            queued = time.monotonic()
             async with self.limiter.semaphore:
                 cooldown = self.health["rate_limited_until"] - time.time()
                 if cooldown > 0:
@@ -75,6 +76,18 @@ class HttpProvider:
                 if accounting is not None:
                     accounting["requests"] += 1
                 started = time.monotonic()
+                observer = getattr(self, "recovery_observer", None)
+                if observer is not None:
+                    recovery_request = accounting is not None
+                    if observer.pending:
+                        key = "recovery_requests_with_backlog" if recovery_request else "monitoring_requests_with_backlog"
+                        observer.health[key] += 1
+                    if recovery_request:
+                        observer.rpc_in_flight += 1
+                        observer.health["maximum_rpc_in_flight"] = max(
+                            observer.health["maximum_rpc_in_flight"], observer.rpc_in_flight)
+                        observer.rpc_started(kwargs["json"]["params"][0])
+                        observer.metrics.sample("provider_wait", started - queued)
                 try:
                     async with self.client.stream(method, url, **kwargs) as response:
                         if response.status_code == 429:
@@ -125,6 +138,10 @@ class HttpProvider:
                     # Avoid URLs in logs: optional keys live in URL query strings.
                     log.warning("%s request failed: %s", self.name, type(exc).__name__)
                     delay = 2**attempt + random.random()
+                finally:
+                    if observer is not None and accounting is not None:
+                        observer.rpc_in_flight -= 1
+                        observer.metrics.sample("http_latency", time.monotonic() - started)
             self.health["connected"] = False
             if attempt < retry_attempts - 1:
                 await asyncio.sleep(delay)

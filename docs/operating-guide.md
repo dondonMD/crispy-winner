@@ -203,3 +203,8 @@ Inspect the four lifecycle/acquisition-age counters and last age sample under
 evidence. The limits are 45 seconds from truncation to verification and 20 seconds
 from verification to processing; ordinary trade freshness and the 180-second
 post-grad window are unchanged. See [time semantics](recovered-migration-freshness.md).
+
+Recovery backlog diagnostics and the bounded two-worker scheduler are described in
+[truncation recovery scheduling](truncation-recovery-pressure.md). Check arrival and
+completion bursts, queue/service latency and monitoring progress together before
+changing capacity; overflow and expiry always invalidate continuity.
