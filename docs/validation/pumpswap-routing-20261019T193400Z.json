@@ -1,0 +1,243 @@
+{
+  "baseline_user_provided": {
+    "elapsed_seconds": 3603.01,
+    "pool_identity_failures": 32,
+    "truncated": 78,
+    "invalid_units": 103,
+    "historical_split": "MIXED_POOLS versus FOREIGN_ONLY not retained",
+    "invalid_unit_category_from_old_code": "OTHER (outside WSOL/USDC)"
+  },
+  "normal_observe": {
+    "elapsed_seconds": 604.98,
+    "pumpswap_flow": {
+      "messages": 0,
+      "acks": 0,
+      "reconnects": 0,
+      "errors": 0,
+      "buy_events": 0,
+      "sell_events": 0,
+      "accepted": 0,
+      "invalid_units": 0,
+      "duplicates": 0,
+      "decode_failures": 0,
+      "token_local_gaps": 0,
+      "truncations": 0,
+      "eligible_pools": 0,
+      "subscribed_pools": 0,
+      "capacity_limited": 0,
+      "last_success": 0,
+      "pool_identity_observations": {
+        "MATCH_ONLY": 0,
+        "MIXED_POOLS": 0,
+        "FOREIGN_ONLY": 0,
+        "TRUE_IDENTITY_FAILURE": 0
+      },
+      "mixed_pool_notifications": 0,
+      "foreign_events_ignored": 0,
+      "foreign_only_notifications": 0,
+      "true_identity_failures": 0,
+      "legacy_foreign_event_rejections_avoided": 0,
+      "pool_identity_examples": [],
+      "quote_observation_categories": {
+        "WSOL": 0,
+        "USDC": 0,
+        "OTHER": 0
+      },
+      "invalid_unit_quote_categories": {
+        "WSOL": 0,
+        "USDC": 0,
+        "OTHER": 0
+      },
+      "enabled": true,
+      "connected": true,
+      "attempted": true,
+      "connected_since": 1792438630.2892036,
+      "capacity": 25,
+      "normal_trade_http_requests": 0,
+      "failure_categories": {
+        "truncated": 0,
+        "unsupported_layout": 0,
+        "invalid_bool": 0,
+        "invalid_string": 0,
+        "invalid_pubkey": 0,
+        "invalid_timestamp_value": 0,
+        "invalid_encoding": 0,
+        "invocation_framing": 0,
+        "pool_identity": 0,
+        "notification": 0
+      },
+      "evidence_counts": {
+        "CURRENT": 0,
+        "PARTIAL": 0,
+        "UNAVAILABLE": 1
+      }
+    },
+    "postgrad_peaks": {
+      "eligible": 0,
+      "subscribed": 0,
+      "current": 0,
+      "clean_seconds": 0.0
+    },
+    "migrations_processed": 2,
+    "migration_lifecycle_counts": {
+      "GRADUATED": 0,
+      "POST_GRAD_OBSERVATION": 1,
+      "ENTRY_CANDIDATE": 0
+    },
+    "ordinary_monitoring_rpc_requests": 64,
+    "rss_mb": 130.3,
+    "average_process_cpu_pct": 26.37,
+    "queue_size": 0,
+    "dropped_trade_events": 0,
+    "dropped_critical_events": 0,
+    "trade_http_requests": 0,
+    "recovery_pressure": {
+      "submitted": 423,
+      "accepted": 393,
+      "completed": 393,
+      "overflow": 30,
+      "expired": 0,
+      "global_gaps": 30,
+      "errors": 0,
+      "rate_limits": 0
+    },
+    "handoff_stage_counts": {
+      "MIGRATION_PENDING": 0,
+      "LIFECYCLE_INELIGIBLE": 0,
+      "VENUE_NOT_PUMPSWAP": 0,
+      "MIGRATION_POOL_HINT_MISSING": 0,
+      "SECURITY_NOT_ATTEMPTED": 0,
+      "SECURITY_PENDING": 0,
+      "POOL_NOT_VERIFIED": 1,
+      "POOL_IDENTITY_INCOMPLETE": 0,
+      "WSS_DISCONNECTED": 0,
+      "SELECTION_PENDING": 0,
+      "CAPACITY_LIMITED": 0,
+      "ACK_PENDING": 0,
+      "QUOTE_UNITS_UNAVAILABLE": 0,
+      "COVERAGE_BUILDING": 0,
+      "SAMPLES_INSUFFICIENT": 0,
+      "TRADE_UNITS_UNAVAILABLE": 0,
+      "TRADE_STALE": 0,
+      "INCOMPLETE_EVIDENCE": 0,
+      "CURRENT": 0,
+      "NO_LONGER_TRACKED": 1
+    }
+  },
+  "supplemental_isolated": {
+    "diagnostic_only": true,
+    "strategy_current_claimed": false,
+    "pool": "Cz6WzWV8FsREtsin7TmRpqgm1BcETCgM8EQcA5X2QJDQ",
+    "base_mint": "GD3thpuWqREqzqpX72R5NfsnyBbUinow8UFEmTKpump",
+    "quote_mint": "So11111111111111111111111111111111111111112",
+    "ownership_layout_verified": true,
+    "runtime_seconds": 300.00191926499974,
+    "transport": {
+      "messages": 0,
+      "acks": 1,
+      "reconnects": 0,
+      "errors": 0,
+      "buy_events": 0,
+      "sell_events": 0,
+      "accepted": 0,
+      "invalid_units": 0,
+      "duplicates": 0,
+      "decode_failures": 0,
+      "token_local_gaps": 0,
+      "truncations": 0,
+      "eligible_pools": 1,
+      "subscribed_pools": 1,
+      "capacity_limited": 0,
+      "last_success": 0,
+      "pool_identity_observations": {
+        "MATCH_ONLY": 0,
+        "MIXED_POOLS": 0,
+        "FOREIGN_ONLY": 0,
+        "TRUE_IDENTITY_FAILURE": 0
+      },
+      "mixed_pool_notifications": 0,
+      "foreign_events_ignored": 0,
+      "foreign_only_notifications": 0,
+      "true_identity_failures": 0,
+      "legacy_foreign_event_rejections_avoided": 0,
+      "pool_identity_examples": [],
+      "quote_observation_categories": {
+        "WSOL": 0,
+        "USDC": 0,
+        "OTHER": 0
+      },
+      "invalid_unit_quote_categories": {
+        "WSOL": 0,
+        "USDC": 0,
+        "OTHER": 0
+      },
+      "enabled": true,
+      "connected": true,
+      "attempted": true,
+      "connected_since": 1792438737.1311257,
+      "capacity": 25,
+      "normal_trade_http_requests": 0,
+      "failure_categories": {
+        "truncated": 0,
+        "unsupported_layout": 0,
+        "invalid_bool": 0,
+        "invalid_string": 0,
+        "invalid_pubkey": 0,
+        "invalid_timestamp_value": 0,
+        "invalid_encoding": 0,
+        "invocation_framing": 0,
+        "pool_identity": 0,
+        "notification": 0
+      }
+    },
+    "subscription_requested": true,
+    "subscription_ack": true,
+    "observations": {
+      "currency": "SOL",
+      "buy_count": 0,
+      "sell_count": 0,
+      "sample_count": 0,
+      "first_event_elapsed_seconds": null,
+      "last_event_age_seconds": null,
+      "total_actual_quote_buy_volume": "0",
+      "total_actual_quote_sell_volume": "0",
+      "rejected_observations": 0,
+      "local_gaps": 0,
+      "examples": []
+    },
+    "executed_volume_fields": {
+      "buy": "user_quote_amount_in",
+      "sell": "user_quote_amount_out"
+    },
+    "verification_http_requests": 1,
+    "normal_path_trade_http_delta": 0,
+    "isolation": "No RadarEngine, database, strategy, research or paper account instantiated"
+  },
+  "raw_reports": [
+    {
+      "path": "data/observe/pumpswap-routing-20261019T193400Z.json",
+      "sha256": "703f3a7a95d7196fe08d2d6ae3cb3f7f6e876d3094e44adb5df04b9c0fd2a37a"
+    },
+    {
+      "path": "data/observe/pumpswap-routing-isolated-20261019T193850Z.json",
+      "sha256": "391c66f5d0acb82e14e05b8c32267f38f97e81c374773a1aa32059f154aff032"
+    }
+  ],
+  "validation": {
+    "backend_tests": 509,
+    "frontend_tests": 39,
+    "ruff": "PASS",
+    "mypy": "PASS",
+    "typescript_build": "PASS",
+    "secret_scan": "PASS",
+    "backend_frontend_audits": "0 vulnerabilities",
+    "diff_check": "PASS"
+  },
+  "limitations": [
+    "No eligible pool during normal run; routing counters unexercised.",
+    "Supplemental verified pool ACKed but produced no events.",
+    "Multi-pool semantics proved deterministically, not newly exercised live.",
+    "Historical 32 cases contain canonical decoded foreign events but cannot be split into mixed/foreign-only from old aggregates.",
+    "Recovery pressure remains separate and unchanged."
+  ]
+}

@@ -87,8 +87,8 @@ def test_invalid_event_values_fail_closed(overrides):
     assert not events and gaps == [MINT] and p.health["decode_failures"] == 1
 
 
-@pytest.mark.parametrize("mode", ["truncate", "short_discriminator", "tail", "bool", "pool", "framing"])
-def test_malformed_and_pool_conflicts_gap_only_subscribed_token(mode):
+@pytest.mark.parametrize("mode", ["truncate", "short_discriminator", "tail", "bool", "framing"])
+def test_malformed_notification_gaps_only_subscribed_token(mode):
     p, events, gaps = provider()
     raw = base64.b64decode(wire())
     if mode == "short_discriminator":
@@ -100,7 +100,7 @@ def test_malformed_and_pool_conflicts_gap_only_subscribed_token(mode):
     elif mode == "bool":
         # BuyEvent track_volume follows seven pubkeys, two creator fee u64s.
         raw = raw[:360] + bytes([3]) + raw[361:]
-    n = notification(base64.b64encode(raw).decode() if mode != "pool" else wire(pool=str(Pubkey.new_unique())))
+    n = notification(base64.b64encode(raw).decode())
     if mode == "framing":
         n["params"]["result"]["value"]["logs"].pop()
     p.handle(n)

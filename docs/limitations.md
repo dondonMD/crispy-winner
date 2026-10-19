@@ -137,3 +137,9 @@ counted but cannot emit lifecycle evidence. See [migration recovery](migration-r
 Truncation recovery uses at most two shared-provider workers and 32 total pending
 entries. Saturation or expiry still causes fail-closed gaps; concurrency cannot
 raise provider capacity. See [scheduling measurements](truncation-recovery-pressure.md).
+
+Transaction-wide PumpSwap notifications may include several pools; only complete,
+validated events for the subscribed pool contribute. Unknown quote units and
+truncations remain unavailable. See [event routing](pumpswap-event-routing.md).
+The accepted 60-minute run's recovery overflow/expiry remains a separate high-load
+limitation; this routing patch does not change recovery capacity or scheduling.

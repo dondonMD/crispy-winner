@@ -3,6 +3,7 @@ import asyncio
 import json
 import time
 from unittest.mock import AsyncMock
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -14,7 +15,9 @@ from backend.tests.test_trade_gap_scoping import tracked_engine as tracked_engin
 from backend.tests.test_truncation_recovery import transaction
 
 
-def test_diagnostics_bounded():
+def test_diagnostics_bounded(monkeypatch):
+    # Saturation is a deterministic count test, independent of host CPU speed.
+    monkeypatch.setattr("backend.app.recovery_metrics.time", SimpleNamespace(monotonic=lambda: 1000.0))
     metrics = RecoveryMetrics()
     for i in range(10000):
         metrics.sample("queue_wait", i)

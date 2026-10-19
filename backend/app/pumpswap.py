@@ -2,6 +2,7 @@
 import asyncio
 import base64
 import binascii
+import hashlib
 from dataclasses import dataclass
 import json
 import os
@@ -123,6 +124,13 @@ class PumpSwapFlow:
         self.health: dict[str, Any] = dict.fromkeys(("messages", "acks", "reconnects", "errors", "buy_events",
             "sell_events", "accepted", "invalid_units", "duplicates", "decode_failures", "token_local_gaps",
             "truncations", "eligible_pools", "subscribed_pools", "capacity_limited", "last_success"), 0)
+        self.health.update(pool_identity_observations=dict.fromkeys(
+            ("MATCH_ONLY", "MIXED_POOLS", "FOREIGN_ONLY", "TRUE_IDENTITY_FAILURE"), 0),
+            mixed_pool_notifications=0, foreign_events_ignored=0, foreign_only_notifications=0,
+            true_identity_failures=0, legacy_foreign_event_rejections_avoided=0,
+            pool_identity_examples=[],
+            quote_observation_categories=dict.fromkeys(("WSOL", "USDC", "OTHER"), 0),
+            invalid_unit_quote_categories=dict.fromkeys(("WSOL", "USDC", "OTHER"), 0))
         self.health.update(enabled=enabled, connected=False, attempted=False, connected_since=0, capacity=self.capacity, normal_trade_http_requests=0,
                            failure_categories=dict.fromkeys(REASONS, 0))
 
@@ -255,25 +263,39 @@ class PumpSwapFlow:
                 self.health["truncations"] += 1
                 raise DecodeFailure("truncated")
             events = self.parse_logs(logs)
-            record = self.pools[pool]
-            # Validate whole notification before any submission.
-            if any(event[2]["pool"] != pool for event in events):
+            record = self.pools.get(pool)
+            if record is None or record.address != pool or self.registry.get(pool) != record:
+                self.identity_observation("TRUE_IDENTITY_FAILURE", pool, signature, events)
                 raise DecodeFailure("pool_identity")
-            if self.registry.get(pool) != record:
-                self.gap(pool, "unsubscribe", now)
-                self.since.pop(pool, None)
+            # Parse/validate the COMPLETE notification first. A malformed foreign
+            # event still fails closed; only proven-valid foreign events are ignored.
+            matching = [event for event in events if event[2]["pool"] == pool]
+            foreign = len(events) - len(matching)
+            if events:
+                classification = "MIXED_POOLS" if matching and foreign else (
+                    "MATCH_ONLY" if matching else "FOREIGN_ONLY")
+                self.identity_observation(classification, pool, signature, events)
+            self.health["foreign_events_ignored"] += foreign
+            if foreign:
+                self.health["legacy_foreign_event_rejections_avoided"] += 1
+            if not matching:
                 return
-            for ordinal, name, event in events:
+            currency, decimals = QUOTES.get(record.quote_mint, ("unknown", 0))
+            if currency == "unknown":
+                self.gap(pool, "units", now)
+            for ordinal, name, event in matching:
                 identity = f"amm:{signature}:{ordinal}:{pool}"
                 if not self.dedup.accept(identity):
                     self.health["duplicates"] += 1
                     continue
                 side = "buy" if name == "BuyEvent" else "sell"
                 self.health["buy_events" if side == "buy" else "sell_events"] += 1
-                currency, decimals = QUOTES.get(record.quote_mint, ("unknown", 0))
+                category = "WSOL" if currency == "SOL" else ("USDC" if currency == "USDC" else "OTHER")
+                self.health["quote_observation_categories"][category] += 1
                 raw = event["user_quote_amount_in" if side == "buy" else "user_quote_amount_out"]
                 valid = currency != "unknown"
                 self.health["invalid_units"] += not valid
+                self.health["invalid_unit_quote_categories"][category] += not valid
                 accepted = self.submit(MarketEvent(mint=record.mint, ts=event["timestamp"], source="PumpSwap WSS",
                     kind="trade", event_id=identity, wallet=event["user"], side=side,
                     volume=raw / 10 ** decimals if valid else 0, currency=currency, signature=signature,
@@ -287,6 +309,25 @@ class PumpSwapFlow:
             self.health["decode_failures"] += 1
             self.health["failure_categories"][reason] += 1
             self.gap(pool, now=now)
+            if reason == "pool_identity":
+                self.since.pop(pool, None)
+
+    def identity_observation(self, classification, pool, signature, events):
+        self.health["pool_identity_observations"][classification] += 1
+        if classification == "MIXED_POOLS":
+            self.health["mixed_pool_notifications"] += 1
+        elif classification == "FOREIGN_ONLY":
+            self.health["foreign_only_notifications"] += 1
+        elif classification == "TRUE_IDENTITY_FAILURE":
+            self.health["true_identity_failures"] += 1
+        if classification != "MATCH_ONLY" and len(self.health["pool_identity_examples"]) < 3:
+            matching = sum(e[2]["pool"] == pool for e in events)
+            self.health["pool_identity_examples"].append({
+                "classification": classification, "signature_hash": hashlib.sha256(signature.encode()).hexdigest()[:16],
+                "subscribed_pool": pool, "decoded_events": len(events), "matching": matching,
+                "foreign": len(events) - matching,
+                "events": [{"ordinal": ordinal, "side": "buy" if name == "BuyEvent" else "sell"}
+                           for ordinal, name, _ in events[:32]], "event_example_limit": 32})
 
     @staticmethod
     def parse_logs(logs):
