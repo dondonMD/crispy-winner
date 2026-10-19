@@ -6,6 +6,7 @@ import time
 import uuid
 from collections import deque, OrderedDict
 from typing import Any
+from sqlalchemy import text
 
 from alembic import command
 from alembic.config import Config
@@ -25,13 +26,14 @@ from backend.app.pumpswap import PumpSwapFlow, VerifiedPool
 from backend.app.resources import ResourceMonitor
 from backend.app.intelligence import Intelligence
 from backend.app.handoff import HandoffTrace
+from backend.app.prospective import ProspectiveCohort, CohortIntegrityError
 from backend.app.pumpswap import QUOTES
 
 log = logging.getLogger(__name__)
 
 
 class RadarEngine:
-    def __init__(self, settings, db_path=None, offline=False):
+    def __init__(self, settings, db_path=None, offline=False, cohort_id=None):
         self.settings = settings
         self.offline = offline
         self.session = str(uuid.uuid4())
@@ -40,6 +42,23 @@ class RadarEngine:
         with self.db.engine.begin() as conn:
             cfg.attributes["connection"] = conn
             command.upgrade(cfg, "head")
+        self.prospective = None
+        selected_cohort = cohort_id or (os.getenv("RADAR_COHORT") if not offline else None)
+        if not selected_cohort and not offline:
+            with self.db.engine.connect() as connection:
+                cohort_exists = connection.execute(text("SELECT 1 FROM prospective_cohorts LIMIT 1")).first()
+            if cohort_exists:
+                self.db.engine.dispose()
+                raise CohortIntegrityError("This research DB requires explicit cohort selection; use --cohort")
+        if selected_cohort:
+            try:
+                self.prospective = ProspectiveCohort(self.db, settings, selected_cohort)
+            except Exception:
+                self.db.engine.dispose()
+                raise
+            self.db.record_observer = self.prospective.on_record
+        self.last_cohort_quality = 0.0
+        self.cohort_started = time.time()
         self.queue = PriorityBuffer(settings.queue_size)
         self.tokens: dict[str, Token] = {}
         self.creators: OrderedDict = OrderedDict()
@@ -51,6 +70,9 @@ class RadarEngine:
         self.sizer = PositionSizer(settings, self.costs)
         self.paper = PaperAccount(self.db, settings, self.costs)
         self.collector = OutcomeCollector(self.db, settings, self.costs, self.session)
+        if self.prospective:
+            self.collector.prospective = self.prospective
+            self.collector.close_prospective()
         self.version, self.strategy_config = strategy_version(settings)
         if not any(r.get("version") == self.version for r in self.db.rows("strategy", limit=10000)):
             self.db.add("strategy", {"version": self.version, "config": self.strategy_config})
@@ -625,6 +647,7 @@ class RadarEngine:
         return any(provider.health["connected"] for provider in self.discovery_providers)
 
     async def start(self):
+        self.capture_cohort_quality(time.time(), "RUNNING")
         self.running = True
         self.tasks = [asyncio.create_task(self.run_loop(), name="monitor")]
         if self.settings.mode == "DEMO":
@@ -644,10 +667,14 @@ class RadarEngine:
         for task in self.tasks:
             task.cancel()
         await asyncio.gather(*self.tasks, return_exceptions=True)
-        await self.rpc.close()
-        await self.dex.close()
-        self.checkpoint(time.time())
-        self.db.engine.dispose()
+        try:
+            self.collector.close_prospective()
+            self.capture_cohort_quality(time.time(), "STOPPED")
+        finally:
+            await self.rpc.close()
+            await self.dex.close()
+            self.checkpoint(time.time())
+            self.db.engine.dispose()
 
     async def run_demo(self):
         from backend.app.demo import demo_events
@@ -947,6 +974,27 @@ class RadarEngine:
                 now,
             )
 
+    def capture_cohort_quality(self, now, status="RUNNING"):
+        if not self.prospective:
+            return
+        self.prospective.quality(self.session, {
+            "started_at": self.cohort_started, "updated_at": now, "status": status,
+            "recovery_overflow": self.recovery.health["overflow"],
+            "recovery_expired": self.recovery.health["expired"],
+            "global_trade_gaps": self.trade_continuity["global_resets"],
+            "pump_reconnects": self.onchain.health["reconnects"],
+            "pumpswap_reconnects": self.pumpswap.health["reconnects"],
+            "rpc_errors": self.rpc.health["errors"], "rpc_429": self.rpc.health["rate_limits"],
+            "stale_trade_rejections": self.trade_continuity["per_token_reasons"]["stale"],
+            "queue": {k: v for k, v in self.queue.snapshot().items() if k != "depth_samples"},
+            "storage_full": bool(self.metrics.get("storage_full")),
+            "resource_pressure": bool(self.metrics.get("resource_pressure")),
+            "providers_connected": {"pump": self.onchain.health["connected"],
+                                    "pumpswap": self.pumpswap.health["connected"],
+                                    "rpc": self.rpc.health["connected"]},
+        })
+        self.last_cohort_quality = now
+
     async def run_loop(self):
         while True:
             try:
@@ -967,6 +1015,8 @@ class RadarEngine:
                 if not self.metrics.get("storage_full"):
                     self.collector.expire(now)
                 self.metrics = self.resources.sample()
+                if now - self.last_cohort_quality >= 30:
+                    self.capture_cohort_quality(now)
                 if self.metrics["resource_pressure"]:
                     self.alert("SYSTEM", "", "RESOURCE PRESSURE — reducing monitoring", now)
                     for token in self.tokens.values():
@@ -993,6 +1043,9 @@ class RadarEngine:
                 if any(t.done() for t in self.tasks if t.get_name() != "monitor"):
                     self.metrics["resource_pressure"] = True
                     self.alert("SYSTEM", "", "Background provider stopped; entries blocked", now)
+            except CohortIntegrityError:
+                self.running = False
+                raise
             except Exception as exc:
                 log.error("Monitor failed safely: %s", type(exc).__name__)
                 for token in self.tokens.values():

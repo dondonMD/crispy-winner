@@ -1,8 +1,9 @@
 import json
 import time
 from pathlib import Path
+from typing import Any
 
-from sqlalchemy import Float, Index, Integer, String, Text, create_engine, event, select, delete
+from sqlalchemy import Float, Index, Integer, String, Text, create_engine, event, select, delete, text, inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
@@ -51,6 +52,7 @@ class Database:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
+        self.record_observer: Any = None
         self.engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False})
 
         @event.listens_for(self.engine, "connect")
@@ -83,6 +85,8 @@ class Database:
             )
             db.add(row)
             db.flush()
+            if self.record_observer is not None and kind in ("signal", "outcome"):
+                self.record_observer(db, row, payload)
             return row.id
 
     def rows(self, kind, mint=None, session=None, limit=500, after=0):
@@ -138,12 +142,17 @@ class Database:
             "outcome": settings.outcome_retention_days * 86400,
         }
         count = 0
+        cohorts_exist = inspect(self.engine).has_table("prospective_enrollments")
         with self.sessions.begin() as db:
             db.execute(
                 delete(EventIdentity).where(EventIdentity.ts < now - settings.raw_retention_hours * 3600)
             )
             for kind, seconds in groups.items():
-                result = db.execute(delete(Record).where(Record.kind == kind, Record.ts < now - seconds))
+                query = delete(Record).where(Record.kind == kind, Record.ts < now - seconds)
+                if kind == "signal" and cohorts_exist:
+                    # Preserve source IDs and provenance; cohort outcomes have their own immutable copies.
+                    query = query.where(text("records.id NOT IN (SELECT signal_id FROM prospective_enrollments)"))
+                result = db.execute(query)
                 count += getattr(result, "rowcount", 0)
         with self.engine.connect() as conn:
             conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")

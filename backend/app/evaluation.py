@@ -3,6 +3,7 @@ import json
 import math
 import statistics
 from collections import defaultdict
+from typing import Any
 from backend.app.domain import MarketEvent
 
 
@@ -17,6 +18,7 @@ class OutcomeCollector:
     def __init__(self, db, settings, estimator, session):
         self.db, self.settings, self.estimator, self.session = db, settings, estimator, session
         self.pending: dict = {}
+        self.prospective: Any = None
 
     def signal(self, token, now, version):
         if token.price is None:
@@ -38,6 +40,8 @@ class OutcomeCollector:
             "position_usd": token.viability.get("proposed_position_usd", 4),
             "eligible_research": token.decision.get("research_eligible", False),
         }
+        # Freeze pending snapshots too: later token dict mutations are not signal-time data.
+        snapshot = json.loads(json.dumps(snapshot, allow_nan=False))
         signal_id = self.db.add("signal", snapshot, token.mint, self.session, now)
         if len(self.pending) >= 2000:
             # Keep memory bounded; omitted follow-up is explicitly missing, never a winning sample.
@@ -51,6 +55,7 @@ class OutcomeCollector:
             del self.pending[oldest]
         self.pending[signal_id] = {
             "mint": token.mint,
+            "session": self.session,
             "signal": snapshot,
             "remaining": set(self.settings.horizons),
             "due": now + self.settings.latency_ms / 1000,
@@ -58,7 +63,22 @@ class OutcomeCollector:
             "min": None,
             "max": None,
         }
+        if self.prospective:
+            self.prospective.persist_pending(signal_id, self.pending[signal_id])
         return signal_id
+
+    def close_prospective(self):
+        """A process interruption has no price backfill; unfinished cohort windows are gaps."""
+        if not self.prospective:
+            return
+        for signal_id, pending in self.prospective.restore_pending().items():
+            for horizon in sorted(pending["remaining"]):
+                self.db.add("outcome", {"signal_id": signal_id, "horizon": horizon,
+                    "status": "UNAVAILABLE_GAP", "reason": "COLLECTOR_SESSION_INTERRUPTION",
+                    "mode": pending["signal"]["mode"], "strategy_version": pending["signal"]["strategy_version"]},
+                    pending["mint"], pending["session"])
+            self.prospective.persist_pending(signal_id, None)
+            self.pending.pop(signal_id, None)
 
     def observe(self, token, event):
         if event.price is None:
@@ -125,11 +145,13 @@ class OutcomeCollector:
                         **result,
                     },
                     token.mint,
-                    self.session,
+                    pending.get("session", self.session),
                     event.ts,
                 )
             if not pending["remaining"]:
                 del self.pending[signal_id]
+            if self.prospective:
+                self.prospective.persist_pending(signal_id, pending if pending["remaining"] else None)
 
     def expire(self, now):
         for signal_id, p in list(self.pending.items()):
@@ -148,10 +170,12 @@ class OutcomeCollector:
                             "strategy_version": p["signal"]["strategy_version"],
                         },
                         p["mint"],
-                        self.session,
+                        p.get("session", self.session),
                         now,
                     )
                 del self.pending[signal_id]
+                if self.prospective:
+                    self.prospective.persist_pending(signal_id, None)
 
 
 class Summary:

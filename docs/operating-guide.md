@@ -212,3 +212,8 @@ changing capacity; overflow and expiry always invalidate continuity.
 For a strategy-isolated real-pool transport/decoder check, use the
 [standalone PumpSwap validation command](isolated-pumpswap-validation.md). Its
 observations never enter candidate, research, Companion, Opportunity or paper state.
+
+Prospective research now has an explicit frozen cohort workflow. See
+[prospective cohort commands and integrity rules](prospective-cohort.md) for creation,
+drift checking, normal OBSERVE sessions, progress and primary after-cost reporting.
+Existing retrospective holdout summaries do not approve prospective evidence.

@@ -1,0 +1,36 @@
+{
+  "scope": "Deterministic synthetic fixtures in isolated temporary databases; not real cohort observations",
+  "primary_endpoint": "300-second after-cost net return",
+  "primary_coverage_requirement_pct": 100,
+  "secondary_horizons_exploratory": [15, 30, 60, 180, 600, 1800],
+  "backend_tests": {"passed": 534, "failed": 0},
+  "focused_prospective_tests": {"passed": 25, "failed": 0},
+  "frontend_tests": {"passed": 39, "failed": 0},
+  "ruff": "PASS",
+  "mypy_app_and_cohort_scripts": "PASS, 35 source files",
+  "typescript_production_build": "PASS",
+  "secret_scan": "PASS",
+  "backend_lock_audit": "No known vulnerabilities",
+  "frontend_audit": "0 vulnerabilities",
+  "diff_check": "PASS",
+  "deterministic_smoke": {
+    "immutable_manifest_creation": "PASS",
+    "prospective_eligible_enrollment": "PASS",
+    "exact_git_version_config_mode_drift_refused": "PASS",
+    "earliest_token_session_primary_only": "PASS",
+    "future_snapshot_mutation_prevented": "PASS",
+    "outcome_collector_after_cost_values_reused": "PASS",
+    "one_measured_one_unavailable_coverage_pct": 50,
+    "restart_pending_gap_and_report_persistence": "PASS",
+    "read_only_report_subprocess": "PASS",
+    "positive_mean_ci_crossing_zero_inconclusive": "PASS",
+    "strongest_status_does_not_approve_evidence_or_enable_execution": "PASS"
+  },
+  "acquisition_and_strategy_thresholds_changed": false,
+  "long_live_validation_run": false,
+  "notes": [
+    "Actual cohort creation must pin the clean implementation commit after commit, not a dirty pre-commit tree.",
+    "Actual manifest and smoke output are kept under ignored data/ and are not synthetic research enrollment.",
+    "Existing frontend duplicate-key warning did not fail tests."
+  ]
+}

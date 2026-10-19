@@ -143,3 +143,9 @@ validated events for the subscribed pool contribute. Unknown quote units and
 truncations remain unavailable. See [event routing](pumpswap-event-routing.md).
 The accepted 60-minute run's recovery overflow/expiry remains a separate high-load
 limitation; this routing patch does not change recovery capacity or scheduling.
+
+Prospective research uses frozen signal snapshots and estimated after-cost outcomes,
+not executions. Missing outcomes remain in coverage; interrupted windows are gaps.
+A normal CI does not resolve dependence, selection, missingness or sequential testing.
+The strongest descriptive evidence status requires predeclared 100% primary coverage
+and never changes holdout approval or trading gates. See [cohort protocol](prospective-cohort.md).
