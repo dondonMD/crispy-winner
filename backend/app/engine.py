@@ -664,17 +664,21 @@ class RadarEngine:
 
     async def stop(self):
         self.running = False
-        for task in self.tasks:
-            task.cancel()
-        await asyncio.gather(*self.tasks, return_exceptions=True)
         try:
-            self.collector.close_prospective()
+            # Snapshot acquisition quality before intentional socket cancellation.
+            # Cancellation itself ends coverage but is not an infrastructure outage.
             self.capture_cohort_quality(time.time(), "STOPPED")
         finally:
-            await self.rpc.close()
-            await self.dex.close()
-            self.checkpoint(time.time())
-            self.db.engine.dispose()
+            for task in self.tasks:
+                task.cancel()
+            await asyncio.gather(*self.tasks, return_exceptions=True)
+            try:
+                self.collector.close_prospective()
+            finally:
+                await self.rpc.close()
+                await self.dex.close()
+                self.checkpoint(time.time())
+                self.db.engine.dispose()
 
     async def run_demo(self):
         from backend.app.demo import demo_events

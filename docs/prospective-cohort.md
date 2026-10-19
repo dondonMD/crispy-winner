@@ -168,10 +168,15 @@ against the same DB while one is active is not a supported parallel collection m
 ## Implementation validation
 
 [Preserved deterministic results](validation/prospective-cohort-20261019.json):
-534 complete backend tests, including 25 prospective tests, and 39 frontend tests
+535 complete backend tests, including 26 prospective tests, and 39 frontend tests
 passed; Ruff, mypy, TypeScript/build, secret scan, dependency audits and diff checks
 passed. Fixtures prove creation, future eligibility, immutable snapshots, drift
 refusal, first-signal selection, exact collector after-cost reuse, 50% coverage for
 one measured/one unavailable sample, restart gaps/persistence and read-only CLI
 reporting. Synthetic fixtures are isolated from real research. No hour-long
 engineering OBSERVE run was performed for this phase.
+
+Session quality is captured before intentional shutdown cancels sockets, so planned
+closure is not misreported as a provider outage. Unfinished outcome windows still
+become gaps. An initial empty CLI smoke cohort exposed this metadata issue and was
+preserved unchanged; the corrected implementation creates a new frozen cohort.

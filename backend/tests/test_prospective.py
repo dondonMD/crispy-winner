@@ -333,3 +333,25 @@ def test_restart_cleans_terminal_work_after_interrupted_pending_cleanup(cohort):
     assert not c.frozen.restore_pending()
     with c.db.engine.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM prospective_pending")).scalar() == 0
+
+
+async def test_intentional_shutdown_does_not_fabricate_session_outage(cohort):
+    import asyncio
+    from backend.app.engine import RadarEngine
+    c = cohort
+    engine = RadarEngine(c.settings, c.db.path, offline=True, cohort_id=c.manifest["cohort_id"])
+    engine.onchain.health["connected"] = engine.pumpswap.health["connected"] = engine.rpc.health["connected"] = True
+    async def transport():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            engine.onchain.health["connected"] = False
+            engine.trade_continuity["global_resets"] += 1
+    engine.tasks = [asyncio.create_task(transport())]
+    await asyncio.sleep(0)
+    await engine.stop()
+    quality = stats(c)["session_quality"][0]["quality"]
+    assert quality["status"] == "STOPPED"
+    assert quality["global_trade_gaps"] == 0
+    assert all(quality["providers_connected"].values())
+    assert engine.trade_continuity["global_resets"] == 1  # Actual cancellation still fails closed.

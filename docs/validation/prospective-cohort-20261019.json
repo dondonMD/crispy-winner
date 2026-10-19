@@ -2,10 +2,26 @@
   "scope": "Deterministic synthetic fixtures in isolated temporary databases; not real cohort observations",
   "primary_endpoint": "300-second after-cost net return",
   "primary_coverage_requirement_pct": 100,
-  "secondary_horizons_exploratory": [15, 30, 60, 180, 600, 1800],
-  "backend_tests": {"passed": 534, "failed": 0},
-  "focused_prospective_tests": {"passed": 25, "failed": 0},
-  "frontend_tests": {"passed": 39, "failed": 0},
+  "secondary_horizons_exploratory": [
+    15,
+    30,
+    60,
+    180,
+    600,
+    1800
+  ],
+  "backend_tests": {
+    "passed": 535,
+    "failed": 0
+  },
+  "focused_prospective_tests": {
+    "passed": 26,
+    "failed": 0
+  },
+  "frontend_tests": {
+    "passed": 39,
+    "failed": 0
+  },
   "ruff": "PASS",
   "mypy_app_and_cohort_scripts": "PASS, 35 source files",
   "typescript_production_build": "PASS",
@@ -24,13 +40,15 @@
     "restart_pending_gap_and_report_persistence": "PASS",
     "read_only_report_subprocess": "PASS",
     "positive_mean_ci_crossing_zero_inconclusive": "PASS",
-    "strongest_status_does_not_approve_evidence_or_enable_execution": "PASS"
+    "strongest_status_does_not_approve_evidence_or_enable_execution": "PASS",
+    "intentional_shutdown_not_counted_as_provider_outage": "PASS"
   },
   "acquisition_and_strategy_thresholds_changed": false,
   "long_live_validation_run": false,
   "notes": [
     "Actual cohort creation must pin the clean implementation commit after commit, not a dirty pre-commit tree.",
     "Actual manifest and smoke output are kept under ignored data/ and are not synthetic research enrollment.",
-    "Existing frontend duplicate-key warning did not fail tests."
+    "Existing frontend duplicate-key warning did not fail tests.",
+    "Initial five-second CLI smoke had zero eligible signals. It exposed a shutdown-quality timing artifact; that empty cohort is preserved, not migrated. Corrected code pins a new cohort SHA."
   ]
 }
