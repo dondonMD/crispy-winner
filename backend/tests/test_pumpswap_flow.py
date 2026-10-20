@@ -79,9 +79,12 @@ def test_units(quote, currency, volume):
 
 
 @pytest.mark.parametrize("overrides", [{"pool": str(Pubkey.default())}, {"user": str(Pubkey.default())},
-    {"timestamp": 0}, {"timestamp": int(time.time()) + 1000}, {"base_amount_out": 0}, {"user_quote_amount_in": 0},
+    {"timestamp": 0}, {"timestamp": "future"}, {"base_amount_out": 0}, {"user_quote_amount_in": 0},
     {"quote_amount_in": 0}])
 def test_invalid_event_values_fail_closed(overrides):
+    overrides = dict(overrides)
+    if overrides.get("timestamp") == "future":
+        overrides["timestamp"] = int(time.time()) + 1000
     p, events, gaps = provider()
     p.handle(notification(wire(**overrides)))
     assert not events and gaps == [MINT] and p.health["decode_failures"] == 1
