@@ -348,9 +348,25 @@
           {
             "name": "creator_fee_unclaimed",
             "type": "u64"
+          },
+          {
+            "name": "quote_transfer_fee",
+            "type": "u64"
           }
         ]
       }
     }
-  ]
+  ],
+  "trade_event_source": {
+    "package": "@pump-fun/pump-sdk",
+    "version": "4.2.0",
+    "repository": "git+https://github.com/pump-fun/pump-sdk.git",
+    "git_head": "4eea7389c1142d1313d08d468de6672ed4545573",
+    "path": "src/idl/pump.json",
+    "integrity": "sha512-3G1efTG8ihxejyso67wwc7EJGUzEI+xbQCJArqlc/unfPEEWiv+u51OqSG3cDOunRxwhTZEb81gMmrZSf9rsSA==",
+    "idl_sha256": "c53b8f5d39887afd27cc40a256527a421c2d91b64a9014dc4952a261f4f36a01",
+    "npm_registry_signature_verified": true,
+    "previous_source": "https://github.com/pump-fun/pump-public-docs/blob/639b87fb45c3adeffa6f7c4a1bf0cb85e392bf22/idl/pump.json",
+    "change": "Append exactly quote_transfer_fee:u64; all preceding 35 fields unchanged. No opaque tails accepted."
+  }
 }
