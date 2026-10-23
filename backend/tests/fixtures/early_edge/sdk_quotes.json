@@ -1,0 +1,3630 @@
+{
+  "synthetic": true,
+  "vectors": [
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 13333333,
+      "quantity": "150471372633",
+      "entry_cost": "13320163",
+      "exit": "13012384",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "b8ba0dbd92ac7fa1091f9ce668a3154ad2a1f9e3b80b03d01279905b30a5d714",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "150471372633",
+          "entry_cost": "13320163",
+          "exit": "13012384"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "150471372633",
+      "exit": "12046257",
+      "gross": "12223499",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "5f50dae902d626d36e0d99b8b3bc2015ebc73599cb15b4c94d702217acc414a7",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "150471372633",
+          "exit": "12046257",
+          "gross": "12223499"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 26666666,
+      "quantity": "300886174666",
+      "entry_cost": "26640328",
+      "exit": "26014988",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "1169b24c007dd33cb11bd497056f53663a088041b78d8721c2bb69991c5e81c5",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "300886174666",
+          "entry_cost": "26640328",
+          "exit": "26014988"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "300886174666",
+      "exit": "24083460",
+      "gross": "24437810",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "21a889f3d141e1eb93a8d51af1ae3083d08d1448cd56a78ffc3150998c917ac5",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "300886174666",
+          "exit": "24083460",
+          "gross": "24437810"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 40000000,
+      "quantity": "451244426578",
+      "entry_cost": "39960493",
+      "exit": "39007818",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "4590fc981461a951df9786028d2b1dba08956739b4e3515b9e79304b43edcb8a",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "451244426578",
+          "entry_cost": "39960493",
+          "exit": "39007818"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "451244426578",
+      "exit": "36111618",
+      "gross": "36642941",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "71577c45e56f08ea40b035e17cf93c420e3e743a08b1c679b767be5587070d2d",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "451244426578",
+          "exit": "36111618",
+          "gross": "36642941"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 13333333,
+      "quantity": "150174786980",
+      "entry_cost": "13313618",
+      "exit": "12967034",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "2e311cbae8947d0fc9bbd36347c682271ef99d1811eb27f47b85bce89c798234",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "150174786980",
+          "entry_cost": "13313618",
+          "exit": "12967034"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "150174786980",
+      "exit": "11998119",
+      "gross": "12199411",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "375e48d8feebf2512de12d3340ffb0a6d5976c09f9978e33c66204a6141e8ea6",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "150174786980",
+          "exit": "11998119",
+          "gross": "12199411"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 26666666,
+      "quantity": "300293226217",
+      "entry_cost": "26627237",
+      "exit": "25924341",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "7cdecc2255c02c2effa001bd3c30123d8246f19355d83f07153275f6bf2348ce",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "300293226217",
+          "entry_cost": "26627237",
+          "exit": "25924341"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "300293226217",
+      "exit": "23987238",
+      "gross": "24389669",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "ed7d43659d50e73ac62f7626b85a4b1f25168fc61fd9f5682aaf1082daaa262c",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "300293226217",
+          "exit": "23987238",
+          "gross": "24389669"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 40000000,
+      "quantity": "450355338000",
+      "entry_cost": "39940857",
+      "exit": "38871929",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "20d8f6cabc707b058dfb3e0f07bb1969c3919edeb5327f0edc7041f62423f665",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "450355338000",
+          "entry_cost": "39940857",
+          "exit": "38871929"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "450355338000",
+      "exit": "35967364",
+      "gross": "36570783",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "3c83b6e554d864cd7c5dcaa50a67bc7aa594982946cb51fc796e816d71a32420",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "450355338000",
+          "exit": "35967364",
+          "gross": "36570783"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 13333333,
+      "quantity": "150471372633",
+      "entry_cost": "13333332",
+      "exit": "12999221",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "683e832932843d9cf31e1a86f0ce1b2737769aa35880f604a1aa41fe55441073",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "150471372633",
+          "entry_cost": "13333332",
+          "exit": "12999221"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "150471372633",
+      "exit": "12046257",
+      "gross": "12223499",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "a78b70dbfbbd2dcf636b01ac6f06051a59f03a8ec9aa3da0d79029d530366a46",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "150471372633",
+          "exit": "12046257",
+          "gross": "12223499"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 26666666,
+      "quantity": "300886174666",
+      "entry_cost": "26666665",
+      "exit": "25988671",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "3c86a3c16f56bb24e1c0549d5b8d4702549e6db5be5ff9482a0d16c61c71556e",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "300886174666",
+          "entry_cost": "26666665",
+          "exit": "25988671"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "300886174666",
+      "exit": "24083460",
+      "gross": "24437810",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "8b753536e7613b5cb54b7dae62b8fd39aea1df8abb450e302569d4f9c2bf9789",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "300886174666",
+          "exit": "24083460",
+          "gross": "24437810"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 40000000,
+      "quantity": "451244426578",
+      "entry_cost": "39999999",
+      "exit": "38968357",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "5158ccb36a40de53d7bc9e51deb923fc3f678a7d645f17aa7a1b6262b45d5e60",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "451244426578",
+          "entry_cost": "39999999",
+          "exit": "38968357"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "451244426578",
+      "exit": "36111618",
+      "gross": "36642941",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "8693ddcca57eebdc2c41992bb739a7a9c64ebe5330084898edc2bf6136926a67",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "451244426578",
+          "exit": "36111618",
+          "gross": "36642941"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 13333333,
+      "quantity": "150174786980",
+      "entry_cost": "13333332",
+      "exit": "12947327",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "3251b19c328b1df732f2eae03d7841a8c0aef1c9e0a031f912d10730c40d54b5",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "150174786980",
+          "entry_cost": "13333332",
+          "exit": "12947327"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "150174786980",
+      "exit": "11998119",
+      "gross": "12199411",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "331a5a305ba873699dc0e77748123717c40c4e553d26bb25b5de3a76f255253e",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "150174786980",
+          "exit": "11998119",
+          "gross": "12199411"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 26666666,
+      "quantity": "300293226217",
+      "entry_cost": "26666665",
+      "exit": "25884942",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "5c8eb75743479b7262d50a4ba2fd03e6ce4af0dc012205b53d860dff3e8f2f9b",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "300293226217",
+          "entry_cost": "26666665",
+          "exit": "25884942"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "300293226217",
+      "exit": "23987238",
+      "gross": "24389669",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "3fabff494fb765a74e4f5e2561523a15d0a091bd053d41b19198600ad55590e8",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "300293226217",
+          "exit": "23987238",
+          "gross": "24389669"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 40000000,
+      "quantity": "450355338000",
+      "entry_cost": "39999999",
+      "exit": "38812853",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "3d6c3e6de370ae297d0ba32b743b901bf7eeeb15838ec660199b68ec79487f46",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "450355338000",
+          "entry_cost": "39999999",
+          "exit": "38812853"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "So11111111111111111111111111111111111111112",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "450355338000",
+      "exit": "35967364",
+      "gross": "36570783",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "c97ee21cc54948b70704361c1f0f0adfde4341026e0b57cd5c17cff008952d0e",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "450355338000",
+          "exit": "35967364",
+          "gross": "36570783"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 2000000,
+      "quantity": "21955385337918",
+      "entry_cost": "1998024",
+      "exit": "1848277",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "9e71798590ec45f53118e0abab507dc768ae7664bf34ee36d411361ad5fb45f7",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "21955385337918",
+          "entry_cost": "1998024",
+          "exit": "1848277"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "21955385337918",
+      "exit": "1711048",
+      "gross": "1736225",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "f7ce876504f39749e05e0e4ed58c3313e5ae59c1ca13a7495121ae12956c0c59",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "21955385337918",
+          "exit": "1711048",
+          "gross": "1736225"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 4000000,
+      "quantity": "42737883346367",
+      "entry_cost": "3996049",
+      "exit": "3509094",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "976dabef7d4e89e2bb50e2a37a705ac0ad4f49b7620a88cb28e92573ae735b15",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "42737883346367",
+          "entry_cost": "3996049",
+          "exit": "3509094"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "42737883346367",
+      "exit": "3248555",
+      "gross": "3296354",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "1ec589d3c35c600f15de7da0fc0a9776494343bd2def7eb49748d43c44f011c9",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "42737883346367",
+          "exit": "3248555",
+          "gross": "3296354"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 6000000,
+      "quantity": "62439005681379",
+      "entry_cost": "5994073",
+      "exit": "5009590",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "2830d99df4babf608fd6d1925348754e20dbcdb9d0fe125c71109a207cd7821b",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "62439005681379",
+          "entry_cost": "5994073",
+          "exit": "5009590"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "62439005681379",
+      "exit": "4637645",
+      "gross": "4705881",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "7e384fd924ada822ee0ec55f1694ab76c598792b02df9ceaf242a2cee78e366a",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "62439005681379",
+          "exit": "4637645",
+          "gross": "4705881"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 2000000,
+      "quantity": "21913289377825",
+      "entry_cost": "1997043",
+      "exit": "1842029",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "af2e47115fa70c11b9b55e36489b8c432375e59b798c27dc306ee08970670ce5",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "21913289377825",
+          "entry_cost": "1997043",
+          "exit": "1842029"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "21913289377825",
+      "exit": "1704390",
+      "gross": "1732985",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "f81e572e010af2728822de74cb592662adbd87d4577bca2e796bd7fcb03df2cb",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "21913289377825",
+          "exit": "1704390",
+          "gross": "1732985"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 4000000,
+      "quantity": "42658114762098",
+      "entry_cost": "3994085",
+      "exit": "3497560",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "95b6a2bfcd96ec1f8d96f404829b0cd4715ea1be31d6c4e02b13826d6a42019c",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "42658114762098",
+          "entry_cost": "3994085",
+          "exit": "3497560"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "42658114762098",
+      "exit": "3236217",
+      "gross": "3290512",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "bb241bd506e61bde77160922f85020e30d46042a1ae9149307e56396a94af5b7",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "42658114762098",
+          "exit": "3236217",
+          "gross": "3290512"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 6000000,
+      "quantity": "62325506721123",
+      "entry_cost": "5991128",
+      "exit": "4993553",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "4ddcb3f881b6b23600ed327ae31ce0b8fb2e932183e1e2cef9e2fd6910421252",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "62325506721123",
+          "entry_cost": "5991128",
+          "exit": "4993553"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": false,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "62325506721123",
+      "exit": "4620428",
+      "gross": "4697945",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "bc8a18c90499e746f8b0d150c36d8451e42bf85075f919a0101c8bcd00452eb4",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "62325506721123",
+          "exit": "4620428",
+          "gross": "4697945"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 2000000,
+      "quantity": "21955385337918",
+      "entry_cost": "1999999",
+      "exit": "1846408",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "db43df405af17b36d451420dba745c47577d03c9da970c7a88580f8e23bd0892",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "21955385337918",
+          "entry_cost": "1999999",
+          "exit": "1846408"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "21955385337918",
+      "exit": "1711048",
+      "gross": "1736225",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "f4d5e105e4fa4d18cc9e72d31fd5c0662e54c89497972947421bb3f0b860a4a3",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "21955385337918",
+          "exit": "1711048",
+          "gross": "1736225"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 4000000,
+      "quantity": "42737883346367",
+      "entry_cost": "3999999",
+      "exit": "3505544",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "862788bd248d84b5b00d8e7ac2cb589b85c457a86ad2fe4624ff1da6456f3654",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "42737883346367",
+          "entry_cost": "3999999",
+          "exit": "3505544"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "42737883346367",
+      "exit": "3248555",
+      "gross": "3296354",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "21634927d6a41e23f2a6b1a28552b1019a1181d8a5dd10971a1ee50e82591847",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "42737883346367",
+          "exit": "3248555",
+          "gross": "3296354"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 6000000,
+      "quantity": "62439005681379",
+      "entry_cost": "5999999",
+      "exit": "5004522",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "34b0f7438010a0c33089ee4efb79e1854f459c4e713f59f84d994d942bf48a4c",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "62439005681379",
+          "entry_cost": "5999999",
+          "exit": "5004522"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 0,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "62439005681379",
+      "exit": "4637645",
+      "gross": "4705881",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "af27b1ccb6268466726f28acc1773825278f6edaf7b96acce62b3b1c2ac6f1ba",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "62439005681379",
+          "exit": "4637645",
+          "gross": "4705881"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 2000000,
+      "quantity": "21913289377825",
+      "entry_cost": "2000000",
+      "exit": "1839230",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "35ff0dde7e16c072d26cfce26d15eeb841b4cf15ecb9e45500bd791af8fc48fc",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "21913289377825",
+          "entry_cost": "2000000",
+          "exit": "1839230"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "21913289377825",
+      "exit": "1704390",
+      "gross": "1732985",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "5de221f723ee946cdfc8f255f1d48a9d5bc0e41c58093517829def1f438d54f2",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "21913289377825",
+          "exit": "1704390",
+          "gross": "1732985"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 4000000,
+      "quantity": "42658114762098",
+      "entry_cost": "3999999",
+      "exit": "3492245",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "a7598c46b2d7af79b5390469771d447cf5d47695692ec1225cbaeb225b94e54a",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "42658114762098",
+          "entry_cost": "3999999",
+          "exit": "3492245"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "42658114762098",
+      "exit": "3236217",
+      "gross": "3290512",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "23e2a02f740ec996bac4e397aeac4fb0235631730644e64c1e6aa3ad1a6c17db",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "42658114762098",
+          "exit": "3236217",
+          "gross": "3290512"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-sdk@4.1.0",
+      "state": {
+        "venue": "PUMP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 70000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 40000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "budget": 6000000,
+      "quantity": "62325506721123",
+      "entry_cost": "6000000",
+      "exit": "4985964",
+      "provenance": {
+        "package": "@pump-fun/pump-sdk",
+        "version": "4.1.0",
+        "integrity": "sha512-bjxHqUFgC6mcltooQZBbfIrmNBXeiCQNXGhEFPGaOSOCG47vuos153uAbIRL4dESa+6IaVodYUvIMWvgm9DV1w==",
+        "source_files_sha256": {
+          "src/bondingCurve.ts": "c9d796111d676861d6fe6359cc96dd045afda4bd4bf1702f48d326cb3d5910da",
+          "src/fees.ts": "039ad335b2932b128c6d48693965ae6ed96a4acb7ae0139330dde10d0a04d8ef",
+          "src/idl/pump.json": "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207",
+          "src/idl/pump_fees.json": "f111d2e5c9aa3d4e64d6a4e6b6f34300ccb1eaf6abc46834fe491836dc90aa74",
+          "src/sdk.ts": "df82f4f4e3f8200c178386eb5c6eccf183e6ff3ea2f7e7cb2d82bd9c895b9bc8",
+          "src/pda.ts": "66f4df4ac841f60f3db0bfb1a85e42e6798232ab42bf05c52c1cf4b07f49f01c",
+          "dist/index.js": "4cc601cea357e602ed86062daab5cfc79ded81c88cf742943466ca0de81ea3a8"
+        },
+        "fixture_sha256": "275875606e2a20071661696332ae18a55497363d856cc830384b5e5e3f179864",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "62325506721123",
+          "entry_cost": "6000000",
+          "exit": "4985964"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    },
+    {
+      "synthetic": true,
+      "source": "@pump-fun/pump-swap-sdk@2.1.0",
+      "state": {
+        "venue": "PUMPSWAP",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "base_reserve": 800000000000000,
+        "effective_quote": 65000000,
+        "real_token_reserves": 600000000000000,
+        "real_quote_reserves": 60000000,
+        "complete": false,
+        "canonical_pool": true,
+        "has_creator": true,
+        "mint_supply": 900000000000000,
+        "is_mayhem_mode": true,
+        "creator_fee_bps": 50,
+        "creator_fee_configurable": true,
+        "fee_config": {
+          "flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "exotic_flat_fees": {
+            "lp_fee_bps": 20,
+            "protocol_fee_bps": 95,
+            "creator_fee_bps": 30
+          },
+          "fee_tiers": [
+            {
+              "market_cap_lamports_threshold": 0,
+              "fees": {
+                "lp_fee_bps": 20,
+                "protocol_fee_bps": 95,
+                "creator_fee_bps": 30
+              }
+            },
+            {
+              "market_cap_lamports_threshold": 85000000,
+              "fees": {
+                "lp_fee_bps": 25,
+                "protocol_fee_bps": 80,
+                "creator_fee_bps": 35
+              }
+            }
+          ],
+          "stable_fee_tiers": []
+        }
+      },
+      "quantity": "62325506721123",
+      "exit": "4620428",
+      "gross": "4697945",
+      "provenance": {
+        "package": "@pump-fun/pump-swap-sdk",
+        "version": "2.1.0",
+        "integrity": "sha512-O0ulb5In/pMzxpcWIkzU17N27HQNZhGGof4fhgXZUkRj/vDbrZsDrViNoouhR52bvtfRf61e/bSvEg/h+35ueA==",
+        "source_files_sha256": {
+          "src/sdk/sell.ts": "97bf00f0f7b4d1d694a0143f603b8f103bdcc0943a86cfdc75492eb52ca8d94b",
+          "src/sdk/fees.ts": "45d55d0faca9aec48aca2637f885973602182012ab9623c703f42fec9be164c1",
+          "src/sdk/util.ts": "f1e43eb6d5e3ce1ac4014935208a961bfac331aab5151d15b58c6272f95a6737",
+          "src/idl/pump_amm.json": "b7d8c57a4d9c4dd0109a9ab893052352333252d4eedced10ac091d4d66cab89b",
+          "src/sdk/pda.ts": "1f207494497a227cb4bdca62ba1142a7d63cb00e14083fee48476ee36ba4d543",
+          "src/sdk/offlinePumpAmm.ts": "ac8312ce476d56f6ce9d47019ba779144fa4c3f3b9db2939693f4b12a727b50b",
+          "dist/index.js": "d3a43f2465642236d4f70264d8435af8cc56c2e4b7588a824c355415bffb7016"
+        },
+        "fixture_sha256": "b51ce5fced6fc59723157ac584b7af8ad8b9a7746ac907a4d9e41d091fc5538a",
+        "generator_version": "early-edge-golden-v2",
+        "expected": {
+          "quantity": "62325506721123",
+          "exit": "4620428",
+          "gross": "4697945"
+        },
+        "generator_sha256": "85500ecc6b40c2453ebf5541b894ae4dc3fbd972f9f6b64057a1c0eb27ee6a93"
+      }
+    }
+  ],
+  "provenance_policy": "Captured synthetic official SDK outputs; ordinary tests use Python only. Opt-in regeneration must compare exact vector hashes, never overwrite silently."
+}
