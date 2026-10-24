@@ -129,7 +129,8 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
 
         stages = {}
         for obj, name in ((engine, "analyse"), (engine.db, "add"), (engine.db, "reserve_event"),
-                          (engine.intelligence, "refresh"), (engine.collector, "observe")):
+                          (engine.intelligence, "refresh"), (engine.collector, "observe"),
+                          (engine.intelligence.research, "save_pending"), (engine, "checkpoint")):
             original = getattr(obj, name)
             key = type(obj).__name__ + "." + name
             stages[key] = dict(calls=0, seconds=0., maximum=0.)

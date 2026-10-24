@@ -1,0 +1,31 @@
+# Bounded persistence remediation — 2026-10-24
+
+Starting branch remediation/early-edge-evidence-readiness, source daedd4b7db97f498150b3f4026c95f3a8ae34a09. PRE_COHORT_READY remains NO. All new load is synthetic, isolated, non-enrolling and uses mocked providers. Historical experiment files, retired cohort and prior reports remain unmodified. No push, trading, live cohort or six-hour experiment.
+
+## Isolation and confirmed baseline
+
+Read the prior endurance report/artifacts and persistence/consumer/research/paper implementations. Exact 30,000-trade reconciliation: 19,317 processed/persisted + 9,959 stale + **26 explicitly untracked after churn** + 559 rejected incoming + 139 accepted then evicted = 30,000. The 26 are not unexplained loss or evidence. Accepted=29,441 includes the 139 later evicted; drops=698 includes incoming rejections and evictions. These predicates must not be subtracted twice.
+
+Project database location is ext4 on /dev/sdd (rw,relatime,data=ordered) under WSL2; /tmp is tmpfs. Production SQLite remains WAL, synchronous=NORMAL, busy_timeout=5000ms, foreign_keys=ON, wal_autocheckpoint=32 pages. These settings are unchanged; NORMAL is the existing crash-consistency policy, not a guarantee of surviving host power loss for every acknowledged commit. No fsync/checkpoint policy is weakened to improve scores.
+
+The exact prior 200-record paired component source was copied byte-for-byte (SHA256 a438c972e5e9ee642a0ff6f0a571759f5e58f2427c83413be57cc6cb3da31638) into the new artifact directory. The first component attempt overlapped replay setup, finished 9.4s before the replay's timing/profile end, and is exploratory. An uncontended repeat after replay completed took **0.726 / 0.548s on tmpfs** versus **2.293 / 2.157s on project ext4**, identical two-commit iterations. This reproduces the filesystem contribution without asserting that disk is the sole bottleneck.
+
+Fresh 60s project replay: same 250 candidates, 50/s average with 100/s first-second pulses, 200 warm observations, 0.7 recovery/s, delayed shared-provider stand-ins. Source daedd4b with diagnostic stage timers only; source/harness hashes preserved. All 3,000 trades processed/persisted, no stale/drop, but application p99 **18.436s**, elapsed 78.987s, mean CPU 70.81%, peak RSS 187.63MiB. Stage costs: analyse 22.318s /10,567 calls; Database.add 17.551s /3,750 calls; reserve_event 10.872s /3,000; save_pending 4.253s /3,000; checkpoint 3.289s /3. Timers overlap: do not sum them as exclusive CPU. The old 600s failure remains authoritative for that longer window; this short run is not a replacement.
+
+## Smallest chosen boundaries (before performance acceptance)
+
+A blanket transaction around RadarEngine.process is rejected in this patch. The body mutates tokens, creator/research state and potentially paper state; multiple independent writers and observer callbacks participate. Correct rollback/retry would require a separate tested whole-event state protocol. No accepted trade is now acknowledged early, buffered behind an unbounded writer queue or silently retried with newer timestamps.
+
+Instead:
+
+1. **Immutable restore checkpoints only.** Existing snapshot/creator-profile content and chronological timestamps are frozen synchronously before writing. Preparation is bounded to 500 rows/4MiB. Each transaction normally holds <=10 rows/64KiB; one larger record already valid under existing per-record bounds commits alone. Signals, outcomes, raw events and paper records are forbidden in this API. The existing storage guard is checked before each group. No network or await occurs while holding a write transaction.
+2. **Atomic progress.** Each group commits its rows and a single per-session cp: receipt together. Receipt holds the frozen-plan digest, committed row IDs and complete flag. Return/advance happens after commit. BEGIN IMMEDIATE serializes competing retries using the unchanged busy timeout. A failed group rolls back; older committed groups remain auditable. Retrying identical input verifies committed rows and skips them; changed or older input fails closed. No automatic retry storm is added. A new later checkpoint replaces the per-session progress receipt; this is a bounded latest-checkpoint ledger, not a full historical failure journal. Caller errors remain visible and older snapshot records remain subject to existing retention.
+3. **Exact pending-state no-ops.** OpportunityResearch caches at most its existing LIMIT=1000 committed encoded pending payloads. Only byte-identical saves skip SQL. Mutable objects are never cached as proof, and the cache advances/evicts only after successful transaction commit. Failure leaves the old cache, so retry still writes. This uses the existing single-engine ownership of pending research state; concurrent independent engines sharing the same research pending namespace are not supported by this cache or the pre-existing in-memory owner model. No outcome or eligibility semantics change.
+
+Trade identity and final raw-event commits, paper journal writes and outcome writes retain their existing boundaries. This does **not** claim whole-event atomic retry or fix the pre-existing identity-before-record failure window. Such a change needs memory-state/observer rollback or a deliberate fail-stop recovery protocol. Negative/unavailable outcomes are neither merged into checkpoint groups nor removed to improve timing.
+
+## Initial functional checks
+
+26 targeted transaction/replay/storage/shutdown tests passed in 52.49s. New cases cover bounded commit count, byte-identical retry, frozen-input mismatch, concurrent retry serialization, partial receipt-update failure, writer busy/locked failure then retry, SIGKILL after the first committed group followed by cold DB integrity/retry, storage guard with pinned reader, forbidden/oversized/older checkpoint input, exact pending no-op, failed pending commit and bounded cache. Protected measured -100% and unavailable outcomes survive. Process-kill tests establish SQLite restart behavior, not power-loss guarantees. Ruff/mypy/secret/whitespace checks passed after formatting the new test file.
+
+Performance comparison and full-suite results follow; no passing latency outcome is assumed.
