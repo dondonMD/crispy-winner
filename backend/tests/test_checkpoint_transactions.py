@@ -208,3 +208,51 @@ x.checkpoint_records(records(),'synthetic',100)
     with reopened.engine.connect() as sql:
         assert sql.exec_driver_sql("PRAGMA integrity_check").scalar() == "ok"
     reopened.engine.dispose()
+
+
+def test_commit_failure_cannot_acknowledge_uncommitted_prefix(tmp_path):
+    db = database(tmp_path / "commit.db")
+    attempts = []
+
+    def fail_commit(conn):
+        attempts.append(1)
+        if len(attempts) == 2:
+            raise OSError("Injected commit failure")
+
+    event.listen(db.engine, "commit", fail_commit)
+    with pytest.raises(OSError, match="commit failure"):
+        db.checkpoint_records(records(), "synthetic", 100)
+    assert len(db.rows("snapshot")) == 10
+    assert len(receipt(db)["row_ids"]) == 10 and not receipt(db)["complete"]
+    event.remove(db.engine, "commit", fail_commit)
+    assert len(db.checkpoint_records(records(), "synthetic", 100)) == 25
+    db.engine.dispose()
+
+
+async def test_stop_preserves_terminal_receipt_even_when_checkpoint_fails(tmp_path, monkeypatch):
+    import time
+    from backend.app.engine import RadarEngine
+    from backend.app.domain import MarketEvent
+
+    path = tmp_path / "stop-failure.db"
+    e = RadarEngine(Settings(mode="OBSERVE"), path, offline=True)
+    for i in range(3):
+        e.submit(
+            MarketEvent(
+                event_id=f"queued:{i}", mint="synthetic", ts=time.time(), source="SYNTHETIC", kind="trade"
+            )
+        )
+
+    def fail(now):
+        raise OSError("Injected checkpoint failure")
+
+    monkeypatch.setattr(e, "checkpoint", fail)
+    with pytest.raises(OSError, match="checkpoint failure"):
+        await e.stop()
+    reopened = Database(path)
+    with reopened.sessions() as sql:
+        stopped = json.loads(sql.get(EvidenceRun, e.session).payload)
+    assert stopped["checkpoint_complete"] is False and stopped["checkpoint_failure"] == "OSError"
+    assert stopped["accounting"]["events"]["trade"]["terminal"] == {"shutdown_unprocessed": 3}
+    assert stopped["accounting"]["events"]["trade"]["reconciled"]
+    reopened.engine.dispose()

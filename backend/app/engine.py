@@ -766,12 +766,25 @@ class RadarEngine:
             finally:
                 await self.rpc.close()
                 await self.dex.close()
-                if not self.storage_stopped:
-                    self.checkpoint(time.time())
-                self.db.evidence_run(self.session, dict(status="STORAGE_STOP" if self.storage_stopped else "STOPPED",
-                    at=time.time(), accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity,
-                    recovery=self.recovery.snapshot(), queue=self.queue.snapshot()))
-                self.db.engine.dispose()
+                checkpoint_failure = None
+                try:
+                    if not self.storage_stopped:
+                        self.checkpoint(time.time())
+                except Exception as exc:
+                    checkpoint_failure = exc
+                    if isinstance(exc, StorageBudgetError):
+                        self.storage_stopped = True
+                try:
+                    self.db.evidence_run(self.session, dict(status="STORAGE_STOP" if self.storage_stopped else "STOPPED",
+                        at=time.time(), accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity,
+                        recovery=self.recovery.snapshot(), queue=self.queue.snapshot(),
+                        checkpoint_complete=not self.storage_stopped and checkpoint_failure is None,
+                        checkpoint_failure=type(checkpoint_failure).__name__ if checkpoint_failure else None))
+                finally:
+                    self.db.engine.dispose()
+                if checkpoint_failure is not None:
+                    # Receipt first, then preserve the caller-visible failure; never claim a clean checkpoint.
+                    raise checkpoint_failure
 
     async def run_demo(self):
         from backend.app.demo import demo_events
