@@ -1,5 +1,9 @@
 """Synthetic 250-candidate sustained consumer validation; no live network/cohort."""
 import argparse
+from contextlib import nullcontext
+from collections import Counter
+import os
+import sqlite3
 import asyncio
 import hashlib
 import json
@@ -32,7 +36,21 @@ def percentile(values, fraction):
     return values[min(len(values) - 1, int((len(values) - 1) * fraction))] if values else None
 
 
-async def validate(seconds, rate, recovery_rate, warm_events, output, profile_runtime=False):
+def scheduled_offset(index, rate, bursts=False):
+    if not bursts:
+        return index / rate
+    # Every ten-second block has the same total arrivals, including a one-second 2x pulse.
+    block, within = divmod(index, rate * 10)
+    pulse = rate * 2
+    return block * 10 + (within / pulse if within < pulse else 1 + (within - pulse) * 9 / (rate * 8))
+
+
+def storage_bytes(path):
+    return {name: target.stat().st_size if target.exists() else 0 for name, target in (
+        ("db", path), ("wal", Path(str(path) + "-wal")), ("shm", Path(str(path) + "-shm")))}
+
+
+async def validate(seconds, rate, recovery_rate, warm_events, output, profile_runtime=False, endurance=False):
     # scripts/profile.py must not shadow Python's profiling module in CLI mode.
     script_directory = str(Path(__file__).resolve().parent)
     if script_directory in sys.path:
@@ -40,11 +58,20 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
     import cProfile
     import pstats
 
+    if os.getenv("RADAR_COHORT") or os.getenv("PUMPPORTAL_ENABLED", "false").lower() == "true":
+        raise ValueError("Synthetic diagnostic forbids cohort/PumpPortal selection")
     settings = Settings(mode="OBSERVE")
     source = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     process = psutil.Process()
     output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="synthetic-capacity-only-") as directory:
+    if output.exists() or output.with_suffix(".profile.txt").exists():
+        raise FileExistsError("Diagnostic output already exists")
+    run_directory = output.with_suffix(".run")
+    if endurance:
+        run_directory.mkdir(exist_ok=False)
+    directory_context = (nullcontext(str(run_directory)) if endurance else
+                         tempfile.TemporaryDirectory(prefix="synthetic-capacity-only-"))
+    with directory_context as directory:
         engine = RadarEngine(settings, Path(directory) / "synthetic.db", offline=False)
         mock_requests = 0
 
@@ -52,7 +79,11 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
             nonlocal mock_requests
             mock_requests += 1
             body = json.loads(request.content)
-            await asyncio.sleep(.15)
+            if endurance and body["method"] != "getTransaction":
+                # Reproducible background quote/monitoring stand-in delays, never unrestricted HTTP.
+                await asyncio.sleep(1.5 if mock_requests % 5 == 0 else .35)
+            else:
+                await asyncio.sleep(.15)
             if body["method"] == "getTransaction":
                 result: Any = dict(slot=123, version="legacy", meta=dict(err=None, innerInstructions=[]),
                     transaction=dict(signatures=[body["params"][0]], message=dict(
@@ -108,14 +139,22 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
 
             setattr(obj, name, measured)
         admitted: dict[str, float] = {}
-        queue_waits, producer_lags = [], []
-        app_ages, durations = [], []  # Hard bounded by 600s * 100 events/s.
+        queue_waits: list[float] = []
+        producer_lags: list[float] = []
+        app_ages: list[float] = []
+        durations: list[float] = []  # Bounded by CLI: 1800s * 100 events/s.
+        by_minute: dict[int, list[float]] = {}
+        quote_stats: Counter = Counter()
+        turnover_stats: Counter = Counter()
+        db_path = engine.db.path
         original_process = engine.process
 
         def processed(event, now=None, **kwargs):
             start = time.perf_counter()
             if kwargs.get("queued") and event.kind == "trade":
-                app_ages.append(time.time() - event.ts)
+                age = time.time() - event.ts
+                app_ages.append(age)
+                by_minute.setdefault(int((time.perf_counter() - started) // 60), []).append(age)
                 arrival = admitted.pop(event.event_id, None)
                 if arrival is not None:
                     queue_waits.append(time.perf_counter() - arrival)
@@ -149,15 +188,47 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
 
         async def producer():
             for i in range(int(seconds * rate)):
-                await asyncio.sleep(max(0, started + i / rate - time.perf_counter()))
+                await asyncio.sleep(max(0, started + scheduled_offset(i, rate, endurance) - time.perf_counter()))
                 admitted[f"trade:{i}"] = time.perf_counter()
-                producer_lags.append(time.time() - (wall + i / rate))
-                engine.submit(MarketEvent(event_id=f"trade:{i}", mint=f"synthetic:{i % 250}",
-                    ts=wall + i / rate, source="Solana WSS", kind="trade", side="buy" if i % 3 else "sell",
+                offset = scheduled_offset(i, rate, endurance)
+                producer_lags.append(time.time() - (wall + offset))
+                # Always target the currently admitted set; turnover uses normal create admission.
+                active = list(engine.tokens) if endurance else None
+                mint = active[i % len(active)] if active else f"synthetic:{i % 250}"
+                engine.submit(MarketEvent(event_id=f"trade:{i}", mint=mint,
+                    ts=wall + offset, source="Solana WSS", kind="trade", side="buy" if i % 3 else "sell",
                     wallet=f"synthetic-wallet:{i % 64}", volume=.001 + i % 5 / 1000, currency="SOL"))
+
+        async def turnover():
+            for i in range(1, seconds // 60):
+                await asyncio.sleep(max(0, started + i * 60 - time.perf_counter()))
+                turnover_stats["submitted"] += 1
+                accepted = engine.submit(MarketEvent(event_id=f"turnover:{i}",
+                    mint=f"synthetic-new:{i}", ts=time.time(), source="SYNTHETIC", kind="create"))
+                turnover_stats["accepted"] += bool(accepted)
+
+        async def quote_provider_load():
+            # Bounded delayed shared-RPC workload, not an executable quote or research outcome.
+            for i in range((seconds + 19) // 30):
+                await asyncio.sleep(max(0, started + i * 30 + 10 - time.perf_counter()))
+                deadline = wall + i * 30 + 20
+                quote_stats["attempted"] += 1
+                if time.time() >= deadline:
+                    quote_stats["unavailable_deadline"] += 1
+                    continue
+                try:
+                    await asyncio.wait_for(engine.rpc.rpc("getSlot", []), timeout=min(5, deadline - time.time()))
+                    quote_stats["available_within_deadline" if time.time() <= deadline
+                                else "unavailable_deadline"] += 1
+                except asyncio.TimeoutError:
+                    quote_stats["unavailable_timeout"] += 1
+                except Exception:
+                    quote_stats["unavailable_provider"] += 1
 
         inputs = [asyncio.create_task(producer()), asyncio.create_task(recoveries()),
                   asyncio.create_task(monitor_rpc())]
+        if endurance:
+            inputs.extend([asyncio.create_task(turnover()), asyncio.create_task(quote_provider_load())])
         samples = []
         if profile_runtime:
             profiler.clear()
@@ -165,12 +236,32 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
         try:
             while time.perf_counter() - started < seconds:
                 samples.append(dict(at=time.perf_counter() - started, rss_mb=process.memory_info().rss / 1048576,
-                    cpu=process.cpu_percent(), depth=len(engine.queue.heap), active=len(engine.tokens)))
+                    cpu=process.cpu_percent(), depth=len(engine.queue.heap), active=len(engine.tokens),
+                    storage=storage_bytes(db_path) if endurance else None,
+                    accounted=engine.accounting.snapshot(engine.queue) if endurance else None,
+                    recovery=engine.recovery.snapshot() if endurance else None,
+                    continuity=dict(engine.trade_continuity) if endurance else None))
+                if endurance:
+                    # Freeze nested counters; later mutations must not rewrite sampled history.
+                    samples[-1] = json.loads(json.dumps(samples[-1]))
+                    progress = output.with_suffix(".progress.json")
+                    temporary = progress.with_suffix(".tmp")
+                    temporary.write_text(json.dumps(dict(synthetic=True, at=samples[-1]["at"],
+                        source_sha=source, latest=samples[-1], total_samples=len(samples))))
+                    temporary.replace(progress)
                 if not engine.running or observer.failed:
                     break
                 await asyncio.sleep(1)
-            await inputs[0]
-            await inputs[1]
+            if not engine.running or observer.failed:
+                # Stop producing after a genuine guard/failure; retain explicitly censored work.
+                for task in inputs:
+                    task.cancel()
+                await asyncio.gather(*inputs, return_exceptions=True)
+            else:
+                await inputs[0]
+                await inputs[1]
+            if endurance and engine.running and not observer.failed:
+                await asyncio.gather(*inputs[3:])
             deadline = time.perf_counter() + settings.max_data_age_seconds
             while outstanding(engine) and time.perf_counter() < deadline:
                 await asyncio.sleep(.1)
@@ -188,14 +279,38 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
             detach()
             await engine.stop()
         elapsed = time.perf_counter() - started
-        result = dict(synthetic=True, live_network_requests=0, mock_http_requests=mock_requests,
+        cpu_seconds = sum(process.cpu_times()[:2]) - cpu_start
+        shutdown_storage = storage_bytes(db_path)
+        restart = None
+        if endurance:
+            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as connection:
+                integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+                persisted_stop = json.loads(connection.execute(
+                    "SELECT payload FROM evidence_runs WHERE session=?", (engine.session,)).fetchone()[0])
+            restart_started = time.perf_counter()
+            restart = dict(integrity=integrity, stopped_receipt=persisted_stop,
+                           blocked_storage_guard=engine.storage_stopped)
+            if not engine.storage_stopped:
+                restarted = RadarEngine(settings, db_path, offline=True)
+                restart.update(restored_candidates=len(restarted.tokens),
+                    windows_empty=all(not t.events for t in restarted.tokens.values()),
+                    security_requires_refresh=all(t.last_security == 0 for t in restarted.tokens.values()),
+                    paper_cash=restarted.paper.state["cash"], positions=len(restarted.paper.state["positions"]))
+                await restarted.stop()
+            restart.update(elapsed_seconds=time.perf_counter() - restart_started,
+                           storage_after_restart=storage_bytes(db_path))
+        result = dict(synthetic=True, endurance=endurance, storage_retained=endurance,
+            storage_after_shutdown=shutdown_storage, storage_budget_bytes=engine.db.budget,
+            per_minute_application_age={str(k): dict(count=len(v), p50=percentile(v,.5),
+                p95=percentile(v,.95), p99=percentile(v,.99), maximum=max(v)) for k,v in by_minute.items()},
+            quote_provider_standin=dict(quote_stats), turnover=dict(turnover_stats), restart=restart, live_network_requests=0, mock_http_requests=mock_requests,
             cohort_created=False, runtime_profiled=profile_runtime, source_sha=source, harness_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), configured_candidates=settings.max_candidates,
             configured_max_events=settings.max_events, queue_capacity=settings.queue_size,
             configured_freshness=settings.max_data_age_seconds, declared_seconds=seconds, elapsed_seconds=elapsed,
             target_trade_rate=rate, recovery_arrival_rate=recovery_rate, warm_events_per_token=warm_events,
             active_min=min(s["active"] for s in samples), active_max=max(s["active"] for s in samples),
             peak_rss_mb=max(s["rss_mb"] for s in samples), peak_cpu=max(s["cpu"] for s in samples),
-            mean_cpu=100 * (sum(process.cpu_times()[:2]) - cpu_start) / elapsed,
+            mean_cpu=100 * cpu_seconds / elapsed,
             processed_trades=engine.trade_observations, pre_stop=pre_stop,
             final_accounting=engine.accounting.snapshot(engine.queue), final_recovery=engine.recovery.snapshot(),
             continuity=engine.trade_continuity, monitoring_standin_requests=monitoring, stages=stages,
@@ -215,6 +330,7 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--endurance", action="store_true", help="Opt-in synthetic bursts/turnover/delays, retained DB, <=1800s")
     parser.add_argument("--profile-runtime", action="store_true", help="Separate diagnostic; profiled latency is not comparable")
     parser.add_argument("--seconds", type=int, default=210)
     parser.add_argument("--rate", type=int, default=15)
@@ -222,9 +338,9 @@ if __name__ == "__main__":
     parser.add_argument("--warm-events", type=int, default=200)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    if not (1 <= args.seconds <= 600 and 1 <= args.rate <= 100 and 0 <= args.recovery_rate <= 2
+    if not (1 <= args.seconds <= (1800 if args.endurance else 600) and 1 <= args.rate <= 100 and 0 <= args.recovery_rate <= 2
             and 0 <= args.warm_events <= 500):
         parser.error("Bounded synthetic load required")
-    report = asyncio.run(validate(args.seconds, args.rate, args.recovery_rate, args.warm_events, args.output, args.profile_runtime))
+    report = asyncio.run(validate(args.seconds, args.rate, args.recovery_rate, args.warm_events, args.output, args.profile_runtime, args.endurance))
     print(json.dumps({k: report[k] for k in ("source_sha", "elapsed_seconds", "processed_trades",
                      "peak_rss_mb", "mean_cpu", "trade_application_age")}, indent=2))
