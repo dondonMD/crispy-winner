@@ -323,7 +323,7 @@ async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=
                         dict(
                             ts=now,
                             rpc=dict(engine.rpc.health),
-                            recovery=json.loads(json.dumps(engine.recovery.health)),
+                            recovery=json.loads(json.dumps(engine.recovery.snapshot())),
                             queue_depth=len(engine.queue.heap),
                             queue=engine.queue.snapshot(),
                             active=len(engine.tokens),
@@ -339,7 +339,7 @@ async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=
                             early=dict(observer.counts),
                             pump=dict(engine.onchain.health),
                             rpc=dict(engine.rpc.health),
-                            recovery=json.loads(json.dumps(engine.recovery.health)),
+                            recovery=json.loads(json.dumps(engine.recovery.snapshot())),
                             queue_depth=len(engine.queue.heap),
                             drift=drift,
                         )
@@ -453,7 +453,7 @@ async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=
             processed_buy_sell=dict(engine.trade_observations),
             evidence_samples=evidence_samples,
             final_rpc_health=dict(engine.rpc.health),
-            final_recovery_health=dict(engine.recovery.health),
+            final_recovery_health=engine.recovery.snapshot(),
             quote_attempts=len(records),
             quote_success_rate=sum(
                 r.get("quote_valid", r.get("match", False)) and r.get("usd_reference_valid", False)

@@ -264,6 +264,9 @@ async def test_engine_recovery_is_identity_only_and_locally_scoped(tracked_engin
     assert before == {m: list(t.events) for m, t in e.tokens.items()}
     assert not e.queue.heap and e.trade_observations == {"buy": 0, "sell": 0}
     assert e.rpc.truncation_metrics["requests"] == e.rpc.health["requests"] == 1
+    # Export the canonical merged snapshot, never the legacy zero HTTP fields.
+    assert e.recovery.snapshot()["requests"] == e.recovery.snapshot()["successful_requests"] == 1
+    assert e.recovery.snapshot()["pending"] == 0
 
 
 def test_transport_timing_diagnostics_are_bounded():
