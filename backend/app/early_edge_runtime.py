@@ -279,13 +279,29 @@ def attach_observer(engine, observer):
         if hasattr(engine, "rpc")
         else {}
     )
-    observer.tier = lambda mint: (
-        ("hot" if mint in engine.deep_mints() else "background")
-        if hasattr(engine, "deep_mints")
-        else "unknown"
-    )
+    batch_hot = None
+
+    def tier(mint):
+        if not hasattr(engine, "deep_mints"):
+            return "unknown"
+        hot = batch_hot if batch_hot is not None else engine.deep_mints()
+        return "hot" if mint in hot else "background"
+
+    observer.tier = tier
     original = engine.intelligence.observe
+    refresh = getattr(engine.intelligence, "refresh", None)
     process = engine.process
+
+    def refreshed(*args, **kwargs):
+        nonlocal batch_hot
+        # Refresh is synchronous and observational: no candidate scores/ranks mutate
+        # inside its callbacks. Reuse that exact ranking only for this batch.
+        batch_hot = set(engine.deep_mints()) if hasattr(engine, "deep_mints") else None
+        try:
+            assert refresh is not None
+            return refresh(*args, **kwargs)
+        finally:
+            batch_hot = None
 
     def observed(token, now, acquisition=True):
         result = original(token, now, acquisition=acquisition)
@@ -333,10 +349,14 @@ def attach_observer(engine, observer):
         return result
 
     engine.intelligence.observe = observed
+    if refresh is not None:
+        engine.intelligence.refresh = refreshed
     engine.process = processed
 
     def detach():
         engine.intelligence.observe = original
+        if refresh is not None:
+            engine.intelligence.refresh = refresh
         engine.process = process
 
     return detach

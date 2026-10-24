@@ -1127,9 +1127,12 @@ class RadarEngine:
                 self.observation_tick(now)
                 await self.drain_events()
                 now = time.time()
-                for token in list(self.tokens.values()):
-                    if now - token.last_analysis >= 1:
-                        self.analyse(token, now)
+                for index, token in enumerate(list(self.tokens.values())):
+                    application_time = time.time()
+                    if application_time - token.last_analysis >= 1:
+                        self.analyse(token, application_time)
+                    if index % 10 == 9:
+                        await asyncio.sleep(0)
                 self.expire_inactive_candidates(now)
                 self.intelligence.refresh(now)
                 self.paper.expire_pending(now)

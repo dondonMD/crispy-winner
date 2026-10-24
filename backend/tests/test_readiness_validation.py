@@ -93,3 +93,34 @@ async def test_shutdown_has_durable_terminal_queue_and_recovery_accounting(tmp_p
     assert recovery["accepted_reconciled"] and recovery["coverage_state"] == "STOPPED INCOMPLETE"
     assert not e.recovery.claimed and not e.onchain.health["connected"]
     db.engine.dispose()
+
+
+async def test_observer_batch_reuses_exact_ranking_without_changing_selection(tmp_path):
+    from types import SimpleNamespace
+    from backend.app.early_edge_runtime import attach_observer
+
+    e = RadarEngine(Settings(mode="OBSERVE"), tmp_path / "ranking.db", offline=False)
+    for i in range(30):
+        e.process(MarketEvent(event_id=str(i), mint=f"synthetic:{i}", ts=time.time(),
+                             source="SYNTHETIC", kind="create"))
+    expected = set(e.deep_mints())
+    ranked = e.deep_mints
+    calls = []
+
+    def counted():
+        calls.append(1)
+        return ranked()
+
+    e.deep_mints = counted
+    observed = {}
+    observer = SimpleNamespace(clock=time.time, settings=e.settings, failed=False)
+    observer.observe = lambda token, view, now: observed.update({token.mint: observer.tier(token.mint)})
+    detach = attach_observer(e, observer)
+    e.intelligence.refresh(time.time(), force=True)
+    assert len(calls) == 1
+    assert {mint for mint, tier in observed.items() if tier == "hot"} == expected
+    assert set(e.deep_mints()) == expected
+    observer.tier("synthetic:0")  # Outside the batch the current ranking is read again.
+    assert len(calls) == 3
+    detach()
+    await e.stop()
