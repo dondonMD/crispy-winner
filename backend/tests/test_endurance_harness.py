@@ -38,8 +38,13 @@ def test_synthetic_diagnostic_refuses_selected_cohort(tmp_path, monkeypatch):
 async def test_retained_endurance_shutdown_restart_and_delayed_provider(tmp_path):
     from scripts.validate_evidence_load import validate
     output = tmp_path / 'synthetic.json'
-    result = await validate(12, 5, .1, 0, output, endurance=True)
+    result = await validate(12, 5, .1, 0, output, endurance=True, diagnose_repro=True)
     assert result['live_network_requests'] == 0 and not result['cohort_created']
+    repro = result['reproducibility']
+    assert len(repro['workload_sha256']) == 64
+    assert repro['sqlite'] == dict(journal_mode='wal', synchronous=1, busy_timeout=5000, wal_autocheckpoint=32, page_size=4096)
+    assert repro['diagnostics']['loop_lag']['count'] > 0
+    assert len(repro['mock_request_plan']) == result['mock_http_requests']
     assert result['quote_provider_standin']['attempted'] == 1
     assert sum(v for k, v in result['quote_provider_standin'].items() if k != 'attempted') == 1
     assert result['final_accounting']['events']['trade']['reconciled']

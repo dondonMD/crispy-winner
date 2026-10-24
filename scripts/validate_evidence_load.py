@@ -74,7 +74,7 @@ def install_shutdown_watchdog(loop, interval=.05, ticks=100):
     return state
 
 
-async def validate(seconds, rate, recovery_rate, warm_events, output, profile_runtime=False, endurance=False, cleanup_state=None):
+async def validate(seconds, rate, recovery_rate, warm_events, output, profile_runtime=False, endurance=False, cleanup_state=None, diagnose_repro=False):
     # scripts/profile.py must not shadow Python's profiling module in CLI mode.
     script_directory = str(Path(__file__).resolve().parent)
     if script_directory in sys.path:
@@ -87,6 +87,9 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
     settings = Settings(mode="OBSERVE")
     source = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     process = psutil.Process()
+    from scripts.evidence_repro import ReproTrace, digest
+    trace = ReproTrace() if diagnose_repro else None
+    setup_started = time.perf_counter()
     output.parent.mkdir(parents=True, exist_ok=True)
     if output.exists() or output.with_suffix(".profile.txt").exists():
         raise FileExistsError("Diagnostic output already exists")
@@ -98,16 +101,17 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
     with directory_context as directory:
         engine = RadarEngine(settings, Path(directory) / "synthetic.db", offline=False)
         mock_requests = 0
+        mock_plan: deque = deque(maxlen=8192)
 
         async def transport(request):
             nonlocal mock_requests
             mock_requests += 1
             body = json.loads(request.content)
-            if endurance and body["method"] != "getTransaction":
-                # Reproducible background quote/monitoring stand-in delays, never unrestricted HTTP.
-                await asyncio.sleep(1.5 if mock_requests % 5 == 0 else .35)
-            else:
-                await asyncio.sleep(.15)
+            delay = (1.5 if mock_requests % 5 == 0 else .35) if endurance and body["method"] != "getTransaction" else .15
+            if trace is not None:
+                mock_plan.append(dict(method=body["method"], delay=delay, request_ordinal=mock_requests,
+                                      at=time.perf_counter()-trace.epoch if trace.epoch is not None else None))
+            await asyncio.sleep(delay)
             if body["method"] == "getTransaction":
                 result: Any = dict(slot=123, version="legacy", meta=dict(err=None, innerInstructions=[]),
                     transaction=dict(signatures=[body["params"][0]], message=dict(
@@ -156,6 +160,8 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
                 return original_commit(connection)
             finally:
                 duration = time.perf_counter() - start
+                if trace is not None:
+                    trace.record("sqlite.commit", start, duration)
                 commit_samples.append(duration)
                 commit_totals["count"] += 1
                 commit_totals["seconds"] += duration
@@ -187,6 +193,8 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
                     return _original(*args, **kwargs)
                 finally:
                     elapsed = time.perf_counter() - started
+                    if trace is not None:
+                        trace.record(_key, started, elapsed)
                     row = stages[_key]
                     row["calls"] += 1
                     row["seconds"] += elapsed
@@ -221,8 +229,29 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
                     durations.append(time.perf_counter() - start)
 
         setattr(engine, "process", processed)
+        reproducibility: dict[str, Any] = {}
+        if trace is not None:
+            with engine.db.engine.connect() as conn:
+                pragmas = {name: conn.exec_driver_sql("PRAGMA " + name).scalar() for name in
+                           ["journal_mode", "synchronous", "busy_timeout", "wal_autocheckpoint", "page_size"]}
+            # Hash only predetermined workload/config; no secret values are emitted.
+            reproducibility = dict(settings_sha256=digest(settings.model_dump(mode="json")),
+                workload_sha256=digest(dict(seconds=seconds, rate=rate, recovery_rate=recovery_rate,
+                    warm_events=warm_events, candidates=settings.max_candidates, endurance=endurance,
+                    trades=[(i, scheduled_offset(i, rate, endurance), i % 250, i % 3,
+                             i % 64, .001 + i % 5 / 1000) for i in range(int(seconds * rate))],
+                    warm=[(j, -180 + j * 180 / max(1, warm_events), j % 10, j % 3)
+                          for j in range(warm_events)])),
+                setup_seconds=time.perf_counter() - setup_started, sqlite=pragmas,
+                warm_anchor_age_seconds=time.time()-before,
+                candidate_age_seconds=dict(minimum=min(time.time()-t.created for t in engine.tokens.values()),
+                    maximum=max(time.time()-t.created for t in engine.tokens.values())),
+                storage_at_start=storage_bytes(db_path),
+                maintenance_offsets=dict(last_lab=engine.last_lab, last_maintenance=engine.last_maintenance))
         cpu_start = sum(process.cpu_times()[:2])
         started, wall = time.perf_counter(), time.time()
+        if trace is not None:
+            trace.start(started)
         engine.accounting.last_tick = wall
         engine.running = True
         engine.tasks = [asyncio.create_task(engine.run_loop(), name="monitor"),
@@ -298,6 +327,8 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
                     recovery=engine.recovery.snapshot() if endurance else None,
                     continuity=dict(engine.trade_continuity) if endurance else None))
                 if endurance:
+                    if trace is not None:
+                        samples[-1]["environment"] = trace.sample()
                     # Freeze nested counters; later mutations must not rewrite sampled history.
                     samples[-1] = json.loads(json.dumps(samples[-1]))
                     progress = output.with_suffix(".progress.json")
@@ -307,7 +338,10 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
                     temporary.replace(progress)
                 if not engine.running or observer.failed:
                     break
+                sample_due = time.perf_counter() + 1
                 await asyncio.sleep(1)
+                if trace is not None:
+                    trace.sample_lag(sample_due)
             if not engine.running or observer.failed:
                 # Stop producing after a genuine guard/failure; retain explicitly censored work.
                 for task in inputs:
@@ -385,6 +419,10 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
             trade_processing_seconds=dict(p50=percentile(durations,.5), p95=percentile(durations,.95),
                 p99=percentile(durations,.99), maximum=max(durations,default=0)), samples=samples,
             limitation="Synthetic normalized events; no decoder/network/real CURRENT or prospective outcomes. CPU excludes setup; input warm history is synthetic.")
+        if trace is not None:
+            result["reproducibility"] = dict(**reproducibility, diagnostics=trace.result(), mock_request_plan=list(mock_plan),
+                source_end_sha=subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+                settings_end_sha256=digest(settings.model_dump(mode="json")))
         result = seal_report(result)
         with output.open("x") as file:
             json.dump(result, file, indent=2)
@@ -397,6 +435,7 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--endurance", action="store_true", help="Opt-in synthetic bursts/turnover/delays, retained DB, <=1800s")
+    parser.add_argument("--diagnose-repro", action="store_true", help="Bounded scheduling/environment diagnostics; no policy changes")
     parser.add_argument("--profile-runtime", action="store_true", help="Separate diagnostic; profiled latency is not comparable")
     parser.add_argument("--seconds", type=int, default=210)
     parser.add_argument("--rate", type=int, default=15)
@@ -416,7 +455,7 @@ if __name__ == "__main__":
     async def run_cli():
         try:
             return await validate(args.seconds, args.rate, args.recovery_rate, args.warm_events,
-                                  args.output, args.profile_runtime, args.endurance, cleanup_state=cleanup)
+                                  args.output, args.profile_runtime, args.endurance, cleanup_state=cleanup, diagnose_repro=args.diagnose_repro)
         finally:
             cleanup["validation_returned_at"] = time.perf_counter()
             if "watchdog" not in cleanup:
