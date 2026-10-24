@@ -84,7 +84,7 @@ def test_unchanged_inputs_reuse_static_math_but_never_continuity(monkeypatch):
     first["180"]["trade_evidence"] = "CURRENT"
     first["180"]["cluster_evidence"].append("poison")
     second = calculate_features(t, 102)
-    assert len(calls) == 6 and len(t._feature_window_cache) == 6
+    assert len(calls) == 6 and len(t._feature_window_cache["windows"]) == 6
     assert "trade_evidence" not in second["180"] and "poison" not in second["180"]["cluster_evidence"]
     assert second["180"] == original(t.events, 102, 180, t.creator)
     t.events = deque(maxlen=500)  # Actual observation loss must not retain old breadth.
@@ -172,3 +172,87 @@ def test_guard_uses_writer_connection_and_preserves_atomic_failure(tmp_path):
     assert not db.reserve_event("retry", 101)
     assert db.rows("outcome")[0]["net_return_pct"] == -100
     db.engine.dispose()
+
+
+def test_token_fingerprint_mutations_and_signed_zero_are_exact():
+    import json
+
+    t = Token("synthetic", "", "", 100)
+    observation = MarketEvent(
+        mint=t.mint,
+        source="SYNTHETIC",
+        event_id="one",
+        ts=100,
+        kind="trade",
+        side="buy",
+        volume=0.0,
+        currency="SOL",
+        price=1,
+        wallet="w",
+    )
+    t.events.append(observation)
+    for field, value in [
+        ("volume", 0.0),
+        ("volume", -0.0),
+        ("volume", 2.0),
+        ("wallet", "new"),
+        ("currency", "unknown"),
+        ("side", "sell"),
+        ("price", 3.0),
+        ("ts", 102.0),
+    ]:
+        setattr(observation, field, value)
+        result = calculate_features(t, 103)
+        expected = {str(s): window_features(t.events, 103, s, t.creator) for s in [10, 30, 60, 180, 300, 600]}
+        assert json.dumps(result, sort_keys=True) == json.dumps(expected, sort_keys=True)
+
+
+def test_bound_sql_keeps_constraints_callbacks_and_raw_commit_atomic(tmp_path):
+    from sqlalchemy.exc import IntegrityError
+
+    db = Database(tmp_path / "raw.db")
+    Base.metadata.create_all(db.engine)
+    db.configure_budget(8)
+    with pytest.raises(IntegrityError):
+        db.reserve_event(None, 100)  # ON CONFLICT does not hide NOT NULL failures.
+    callbacks = []
+    db.record_observer = lambda session, row, payload: callbacks.append((row.kind, row.id))
+    db.add("outcome", {"net_return_pct": -100})
+    db.add("signal", {"eligible_research": False})
+    assert [kind for kind, _ in callbacks] == ["outcome", "signal"]
+
+    def fail(conn):
+        raise OSError("raw commit failed")
+
+    event.listen(db.engine, "commit", fail)
+    with pytest.raises(OSError):
+        db.add("event", {"synthetic": True, "quantity": 1})
+    event.remove(db.engine, "commit", fail)
+    assert not db.rows("event")
+    assert db.add("event", {"synthetic": True, "quantity": 1})
+    assert len(db.rows("event")) == 1 and len(callbacks) == 2
+    assert db.rows("outcome")[0]["net_return_pct"] == -100
+    db.engine.dispose()
+
+
+def test_unknown_quote_shortcut_preserves_config_reads_and_ineligibility(monkeypatch):
+    import backend.app.early_edge as module
+
+    calls = []
+    original = module.load_intelligence_settings
+
+    def settings():
+        calls.append(1)
+        return original()
+
+    monkeypatch.setattr(module, "load_intelligence_settings", settings)
+
+    def unnecessary(*args):
+        raise AssertionError("Unknown quote must not repeat pure readiness work")
+
+    monkeypatch.setattr(module, "readiness", unnecessary)
+    t = Token("synthetic", "", "", 100)
+    for quote in ["", "unknown"]:
+        t.verified_quote_mint = quote
+        assert module.signal_snapshot(t, {}, 101, Settings(mode="OBSERVE")) is None
+    assert len(calls) == 2

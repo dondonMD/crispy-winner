@@ -93,32 +93,43 @@ def window_features(events, now, seconds, creator=""):
     }
 
 
-def cached_window_features(events, now, seconds, creator, cache):
+def cached_window_features(events, now, seconds, creator, cache, *, fingerprint_checked=False):
     # Membership is ALWAYS rebuilt using the exact inclusive freshness boundaries.
     # Cache only time-independent math; never evidence continuity, age or decisions.
     trades = [e for e in events if e.kind == "trade" and 0 <= now - e.ts <= seconds]
-    priced = [e.price for e in events if e.price is not None and 0 <= now - e.ts <= seconds]
-    key = (seconds, creator,
-           tuple((e.ts, e.side, e.wallet, e.volume, e.currency, e.price) for e in trades), tuple(priced))
+    priced = [e for e in events if e.price is not None and 0 <= now - e.ts <= seconds]
+    key: tuple
+    if fingerprint_checked:
+        # Caller verified ALL business fields once; timestamp membership is then sufficient.
+        key = (seconds, tuple(e.ts for e in trades), tuple(e.ts for e in priced))
+    else:
+        key = (seconds, creator,
+               tuple((e.ts, e.side, e.wallet, repr(e.volume), e.currency, e.price) for e in trades),
+               tuple(e.price for e in priced))
     if cache.get("key") != key:
         value = window_features(events, now, seconds, creator)
         cache.update(key=key, value=value)
     else:
         value = dict(cache["value"])
-        recent = sum(e.volume if e.side == "buy" else -e.volume
-                     for e in trades if now - e.ts <= seconds / 2)
-        previous = sum(e.volume if e.side == "buy" else -e.volume
-                       for e in trades if now - e.ts > seconds / 2)
+        recent, previous = [], []
+        recent_count = 0
         bins: list[list[float]] = [[] for _ in range(6)]
         boundaries = [i * seconds / 6 for i in range(7)]
         for e in trades:
-            index = bisect_right(boundaries, now - e.ts) - 1
+            age = now - e.ts
+            signed = e.volume if e.side == "buy" else -e.volume
+            if age <= seconds / 2:
+                recent.append(signed)
+                recent_count += 1
+            else:
+                previous.append(signed)
+            index = bisect_right(boundaries, age) - 1
             if 0 <= index < 6:
-                bins[index].append(e.volume if e.side == "buy" else -e.volume)
+                bins[index].append(signed)
         totals = [sum(v) for v in bins]
         value.update(
-            flow_acceleration=recent - previous if value["units_valid"] else None,
-            trade_acceleration=(sum(now - e.ts <= seconds / 2 for e in trades) * 2 - len(trades))
+            flow_acceleration=sum(recent) - sum(previous) if value["units_valid"] else None,
+            trade_acceleration=(recent_count * 2 - len(trades))
                                / (seconds / 2),
             buy_pressure_persistence=sum(v > 0 for v in totals) / 6,
             sell_pressure_persistence=sum(v < 0 for v in totals) / 6,
@@ -133,12 +144,16 @@ def calculate_features(token, now):
         events = [e for e in events if e.kind != "trade" or (
             e.source == "PumpSwap WSS" and e.evidence.get("venue") == "PUMPSWAP"
             and e.ts >= token.flow_epoch)]
+    fingerprint = (token.creator, token.flow_venue, token.flow_epoch,
+                   tuple((e.ts, e.kind, e.side, e.wallet, repr(e.volume), e.currency, e.price)
+                         for e in events))
     cache = getattr(token, "_feature_window_cache", None)
-    if cache is None:
-        cache = {}
+    if cache is None or cache["fingerprint"] != fingerprint:
+        cache = {"fingerprint": fingerprint, "windows": {}}
         setattr(token, "_feature_window_cache", cache)
-    # Six private slots per bounded active token; not serialized into snapshots or research.
-    return {str(s): cached_window_features(events, now, s, token.creator, cache.setdefault(s, {}))
+    # Six private window slots per bounded active token; no cached continuity or decisions.
+    return {str(s): cached_window_features(events, now, s, token.creator,
+                cache["windows"].setdefault(s, {}), fingerprint_checked=True)
             for s in [10, 30, 60, 180, 300, 600]}
 
 

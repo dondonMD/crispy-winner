@@ -196,6 +196,10 @@ def signal_snapshot(token, opportunity, now, settings, fx=None, require_ready=Tr
     view = opportunity.model_dump(mode="json") if hasattr(opportunity, "model_dump") else opportunity
     cfg = load_intelligence_settings()
     f = token.features.get("180", {})
+    # This unchanged mandatory gate already makes enrollment impossible. Preserve the
+    # config read/drift check but avoid duplicate readiness work for unknown units.
+    if token.verified_quote_mint not in QUOTES:
+        return None
     curve_ok = (
         token.last_curve > 0
         and 0 <= now - token.last_curve <= cfg.curve_fresh_seconds

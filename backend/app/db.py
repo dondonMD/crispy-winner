@@ -6,7 +6,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Float, Index, Integer, String, Text, create_engine, event, select, delete, text, inspect
+from sqlalchemy import Float, Index, Integer, String, Text, create_engine, event, select, delete, text, inspect, insert
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
@@ -61,6 +61,12 @@ class EvidenceRun(Base):
     __tablename__ = "evidence_runs"
     session: Mapped[str] = mapped_column(String(40), primary_key=True)
     payload: Mapped[str] = mapped_column(Text)
+
+
+# Parameterized, cacheable statements; same unique constraints and commit boundaries.
+IDENTITY_INSERT = text("INSERT INTO event_identities (event_id, ts) "
+                       "VALUES (:event_id, :ts) ON CONFLICT DO NOTHING")
+RAW_EVENT_INSERT = insert(Record)
 
 
 class StorageBudgetError(RuntimeError):
@@ -182,13 +188,9 @@ class Database:
         return not raw or allocated - reusable < self.budget * .70
 
     def reserve_event(self, event_id, ts):
-        from sqlalchemy.dialects.sqlite import insert
-
         with self.sessions.begin() as db:
             self.writable(connection=db.connection())
-            result = db.execute(
-                insert(EventIdentity).values(event_id=event_id, ts=ts).on_conflict_do_nothing()
-            )
+            result = db.execute(IDENTITY_INSERT, {"event_id": event_id, "ts": ts})
             return getattr(result, "rowcount", 0) == 1
 
     def add(self, kind, payload, mint="", session="", ts=None):
@@ -198,12 +200,22 @@ class Database:
                 encoded = json.dumps(payload, separators=(",", ":"), allow_nan=False)
                 if self.budget and len(encoded.encode()) > min(1048576, int(self.budget * .01)):
                     raise StorageBudgetError("Record exceeds per-write evidence reserve")
-                row = Record(kind=kind, mint=mint, session=session, ts=ts, payload=encoded)
-                db.add(row)
-                db.flush()
-                if self.record_observer is not None and kind in ("signal", "outcome"):
-                    self.record_observer(db, row, payload)
-                identity = row.id
+                if kind == "event":
+                    # No record observer consumes raw events. Preserve ORM flush/callback
+                    # semantics for all financial/research records below.
+                    result = db.connection().execute(RAW_EVENT_INSERT, dict(
+                        kind=kind, mint=mint, session=session, ts=ts, payload=encoded))
+                    primary_key = result.inserted_primary_key
+                    if primary_key is None or primary_key[0] is None:
+                        raise RuntimeError("Raw event insert did not return its identity")
+                    identity = primary_key[0]
+                else:
+                    row = Record(kind=kind, mint=mint, session=session, ts=ts, payload=encoded)
+                    db.add(row)
+                    db.flush()
+                    if self.record_observer is not None and kind in ("signal", "outcome"):
+                        self.record_observer(db, row, payload)
+                    identity = row.id
             else:
                 identity = 0
         if not identity:
