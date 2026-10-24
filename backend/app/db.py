@@ -1,6 +1,7 @@
 import json
 import time
 import hashlib
+import threading
 from contextlib import nullcontext
 from collections import OrderedDict
 from pathlib import Path
@@ -78,6 +79,9 @@ class Database:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         self.record_observer: Any = None
+        self._proof_lock = threading.Lock()
+        self._write_proofs = {f"{kind}_{status}": 0 for kind in ("identity", "event")
+                              for status in ("verified", "absent", "uncertain")}
         self.budget = 0
         self.page_size = 0
         self.context_cache: OrderedDict[str, None] = OrderedDict()
@@ -187,39 +191,94 @@ class Database:
             raise StorageBudgetError("Essential evidence storage reserve reached")
         return not raw or allocated - reusable < self.budget * .70
 
-    def reserve_event(self, event_id, ts):
-        with self.sessions.begin() as db:
-            self.writable(connection=db.connection())
-            result = db.execute(IDENTITY_INSERT, {"event_id": event_id, "ts": ts})
-            return getattr(result, "rowcount", 0) == 1
+    def persistence_snapshot(self):
+        with self._proof_lock:
+            return dict(self._write_proofs)
 
-    def add(self, kind, payload, mint="", session="", ts=None):
-        ts = time.time() if ts is None else ts
-        with self.sessions.begin() as db:
-            if self.writable(raw=kind == "event", connection=db.connection()):
-                encoded = json.dumps(payload, separators=(",", ":"), allow_nan=False)
-                if self.budget and len(encoded.encode()) > min(1048576, int(self.budget * .01)):
-                    raise StorageBudgetError("Record exceeds per-write evidence reserve")
-                if kind == "event":
-                    # No record observer consumes raw events. Preserve ORM flush/callback
-                    # semantics for all financial/research records below.
-                    result = db.connection().execute(RAW_EVENT_INSERT, dict(
-                        kind=kind, mint=mint, session=session, ts=ts, payload=encoded))
+    def _verify_committed_write(self, kind, identity, expected):
+        # Failed write scope has already closed/rolled back. One independent
+        # committed-state read only; never retry a write or assume success.
+        status = "uncertain"
+        row: Any = None
+        try:
+            with self.engine.connect() as proof:
+                if kind == "identity":
+                    row = proof.execute(select(EventIdentity.event_id, EventIdentity.ts).where(
+                        EventIdentity.event_id == identity)).first()
+                else:
+                    row = proof.execute(select(Record.kind, Record.mint, Record.session, Record.ts,
+                        Record.payload).where(Record.id == identity)).first()
+            if row is None:
+                status = "absent"
+            elif expected is None or tuple(row) == expected:
+                status = "verified"
+        except Exception:
+            # Preserve the original write exception; unreadable evidence is UNKNOWN.
+            pass
+        with self._proof_lock:
+            self._write_proofs[f"{kind}_{status}"] += 1
+        return status == "verified"
+
+    def reserve_event(self, event_id, ts):
+        reserved = None
+        try:
+            with self.engine.begin() as db:
+                self.writable(connection=db)
+                result = db.execute(IDENTITY_INSERT, {"event_id": event_id, "ts": ts})
+                reserved = getattr(result, "rowcount", 0) == 1
+        except Exception:
+            if reserved is not None and self._verify_committed_write(
+                "identity", event_id, (event_id, ts) if reserved else None
+            ):
+                return reserved
+            raise
+        return reserved  # The transaction committed before this acknowledgement.
+
+    def _add_event(self, payload, mint, session, ts):
+        identity = 0
+        encoded = None
+        try:
+            with self.engine.begin() as db:
+                if self.writable(raw=True, connection=db):
+                    encoded = json.dumps(payload, separators=(",", ":"), allow_nan=False)
+                    if self.budget and len(encoded.encode()) > min(1048576, int(self.budget * .01)):
+                        raise StorageBudgetError("Record exceeds per-write evidence reserve")
+                    result = db.execute(RAW_EVENT_INSERT, dict(
+                        kind="event", mint=mint, session=session, ts=ts, payload=encoded))
                     primary_key = result.inserted_primary_key
                     if primary_key is None or primary_key[0] is None:
                         raise RuntimeError("Raw event insert did not return its identity")
                     identity = primary_key[0]
-                else:
-                    row = Record(kind=kind, mint=mint, session=session, ts=ts, payload=encoded)
-                    db.add(row)
-                    db.flush()
-                    if self.record_observer is not None and kind in ("signal", "outcome"):
-                        self.record_observer(db, row, payload)
-                    identity = row.id
+        except Exception:
+            if identity and self._verify_committed_write(
+                "event", identity, ("event", mint, session, ts, encoded)
+            ):
+                return identity
+            raise
+        if not identity:
+            self._raw_pressure(ts)
+        return identity
+
+    def add(self, kind, payload, mint="", session="", ts=None):
+        ts = time.time() if ts is None else ts
+        if kind == "event":
+            return self._add_event(payload, mint, session, ts)
+        # All financial/research records retain their original ORM flush,
+        # observer transaction and acknowledgement semantics.
+        with self.sessions.begin() as db:
+            if self.writable(raw=False, connection=db.connection()):
+                encoded = json.dumps(payload, separators=(",", ":"), allow_nan=False)
+                if self.budget and len(encoded.encode()) > min(1048576, int(self.budget * .01)):
+                    raise StorageBudgetError("Record exceeds per-write evidence reserve")
+                row = Record(kind=kind, mint=mint, session=session, ts=ts, payload=encoded)
+                db.add(row)
+                db.flush()
+                if self.record_observer is not None and kind in ("signal", "outcome"):
+                    self.record_observer(db, row, payload)
+                identity = row.id
             else:
                 identity = 0
         if not identity:
-            # Reclamation owns its transaction, outside the empty guard-check scope.
             self._raw_pressure(ts)
         return identity
 

@@ -778,6 +778,7 @@ class RadarEngine:
                     self.db.evidence_run(self.session, dict(status="STORAGE_STOP" if self.storage_stopped else "STOPPED",
                         at=time.time(), accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity,
                         recovery=self.recovery.snapshot(), queue=self.queue.snapshot(),
+                        persistence_reconciliation=self.db.persistence_snapshot(),
                         checkpoint_complete=not self.storage_stopped and checkpoint_failure is None,
                         checkpoint_failure=type(checkpoint_failure).__name__ if checkpoint_failure else None))
                 finally:
@@ -1148,7 +1149,8 @@ class RadarEngine:
                 if now - self.last_audit >= 30:
                     self.last_audit = now
                     self.db.evidence_run(self.session, dict(status="RUNNING", at=now,
-                        accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity))
+                        accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity,
+                        persistence_reconciliation=self.db.persistence_snapshot()))
                 if self.metrics["resource_pressure"]:
                     self.alert("SYSTEM", "", "RESOURCE PRESSURE — reducing monitoring", now)
                     for token in self.tokens.values():
@@ -1509,7 +1511,8 @@ class RadarEngine:
             "session": self.session,
             "evidence_pipeline": dict(self.accounting.snapshot(self.queue),
                 submission_filters={"migration_duplicate": self.submission_filters},
-                storage=dict(self.db.storage_audit), storage_stopped=self.storage_stopped),
+                storage=dict(self.db.storage_audit), storage_stopped=self.storage_stopped,
+                persistence_reconciliation=self.db.persistence_snapshot()),
             "strategy_version": self.version,
             "timestamp": now,
             "tokens": [self.token_view(t, now) for t in tokens],

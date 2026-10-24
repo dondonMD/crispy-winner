@@ -221,6 +221,7 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
         producer_lags: list[float] = []
         app_ages: list[float] = []
         durable_ages: list[float] = []
+        committed_bins: Counter = Counter()
         durations: list[float] = []  # Bounded by CLI: 1800s * 100 events/s.
         by_minute: dict[int, list[float]] = {}
         quote_stats: Counter = Counter()
@@ -241,6 +242,7 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
                 result = original_process(event, now, **kwargs)
                 if result and kwargs.get("queued") and event.kind == "trade" and engine._event_persisted:
                     durable_ages.append(time.time() - event.ts)
+                    committed_bins[int((time.perf_counter() - started) // 10)] += 1
                 return result
             finally:
                 if kwargs.get("queued") and event.kind == "trade":
@@ -429,9 +431,11 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
             mean_cpu=100 * cpu_seconds / elapsed,
             processed_trades=engine.trade_observations, pre_stop=pre_stop,
             final_accounting=engine.accounting.snapshot(engine.queue), final_recovery=engine.recovery.snapshot(),
+            persistence_reconciliation=engine.db.persistence_snapshot(),
             continuity=engine.trade_continuity, monitoring_standin_requests=monitoring, stages=stages,
             trade_application_age=dict(p50=percentile(app_ages,.5), p95=percentile(app_ages,.95),
                                        p99=percentile(app_ages,.99), maximum=max(app_ages,default=0)),
+            durable_commits_per_10s=dict(committed_bins),
             trade_durable_completion_age=dict(count=len(durable_ages),
                 p50=percentile(durable_ages,.5), p95=percentile(durable_ages,.95),
                 p99=percentile(durable_ages,.99), maximum=max(durable_ages,default=0)),
