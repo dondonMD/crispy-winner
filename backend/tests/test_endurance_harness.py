@@ -72,3 +72,49 @@ def test_report_hash_roundtrips_nested_integer_keys_without_mutating_input():
     digest = record.pop("sha256")
     assert hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest() == digest
     assert original == {"scheduling": {"rolling": {1: 2, 5: 8, 10: 9}}}
+
+
+def test_shutdown_watchdog_still_waits_for_real_worker():
+    import json
+    import subprocess
+    import sys
+
+    code = """
+import asyncio,time,threading,json
+from scripts.validate_evidence_load import install_shutdown_watchdog
+started=time.monotonic()
+async def main():
+ loop=asyncio.get_running_loop()
+ loop.run_in_executor(None,time.sleep,.2)
+ install_shutdown_watchdog(loop,interval=.01,ticks=100)
+asyncio.run(main())
+print(json.dumps(dict(elapsed=time.monotonic()-started,threads=len(threading.enumerate()))))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=10, check=True
+    )
+    proof = json.loads(result.stdout)
+    assert proof["elapsed"] >= 0.2 and proof["threads"] == 1
+
+
+def test_shutdown_watchdog_does_not_claim_a_stuck_executor_finished():
+    import subprocess
+    import sys
+
+    code = """
+import asyncio,threading
+from scripts.validate_evidence_load import install_shutdown_watchdog
+async def main():
+ loop=asyncio.get_running_loop()
+ def stuck():
+  print('WORKER_STARTED',flush=True)
+  threading.Event().wait()
+ loop.run_in_executor(None,stuck)
+ install_shutdown_watchdog(loop,interval=.01,ticks=3)
+asyncio.run(main())
+print('CLEAN_EXIT',flush=True)
+"""
+    with pytest.raises(subprocess.TimeoutExpired) as result:
+        subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=5)
+    captured = (result.value.stdout or b"").decode()
+    assert "WORKER_STARTED" in captured and "CLEAN_EXIT" not in captured
