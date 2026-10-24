@@ -136,8 +136,9 @@ class Database:
             db.merge(EvidenceRun(session=session, payload=encoded))
 
     def _raw_pressure(self, ts):
-        self.storage_audit["raw_first_ts"] = self.storage_audit["raw_first_ts"] or ts
-        self.storage_audit["raw_last_ts"] = ts
+        audit = dict(self.storage_audit)
+        audit["raw_first_ts"] = audit["raw_first_ts"] or ts
+        audit["raw_last_ts"] = ts
         # Raw replay provenance is expendable; signals/outcomes/identities/paper are not.
         # This bounded delete reuses SQLite pages, rather than requiring VACUUM.
         with self.sessions.begin() as db:
@@ -152,15 +153,14 @@ class Database:
                 reclaimed_bytes += len(row.payload.encode())
             if selected:
                 first, last = min(row.ts for row in selected), max(row.ts for row in selected)
-                self.storage_audit["reclaimed_first_ts"] = min(
-                    self.storage_audit.get("reclaimed_first_ts", first), first)
-                self.storage_audit["reclaimed_last_ts"] = max(
-                    self.storage_audit.get("reclaimed_last_ts", last), last)
+                audit["reclaimed_first_ts"] = min(audit.get("reclaimed_first_ts", first), first)
+                audit["reclaimed_last_ts"] = max(audit.get("reclaimed_last_ts", last), last)
             deleted = db.execute(delete(Record).where(Record.id.in_([row.id for row in selected])))
-            self.storage_audit["raw_reclaimed"] += getattr(deleted, "rowcount", 0)
-            self.storage_audit["raw_omitted"] += 1
+            audit["raw_reclaimed"] += getattr(deleted, "rowcount", 0)
+            audit["raw_omitted"] += 1
             # Atomic with deletion: crash cannot erase the censorship marker.
-            db.merge(EvidenceRun(session="storage", payload=json.dumps(self.storage_audit)))
+            db.merge(EvidenceRun(session="storage", payload=json.dumps(audit)))
+        self.storage_audit = audit
 
     def writable(self, raw=False):
         if not self.budget:
@@ -169,7 +169,10 @@ class Database:
         with self.engine.connect() as db:
             reusable: int = db.exec_driver_sql("PRAGMA freelist_count").scalar_one() * db.exec_driver_sql(
                 "PRAGMA page_size").scalar_one()
-        if allocated >= self.budget * .95 or allocated - reusable >= self.budget * .85:
+        if allocated >= self.budget * .95:
+            # A reader may pin WAL pages. More cleanup writes then INCREASE allocation.
+            raise StorageBudgetError("Physical evidence storage reserve reached")
+        if allocated - reusable >= self.budget * .85:
             if raw:
                 return False
             raise StorageBudgetError("Essential evidence storage reserve reached")

@@ -736,6 +736,7 @@ class RadarEngine:
 
     async def stop(self):
         self.running = False
+        previous_global_resets = self.trade_continuity["global_resets"]
         try:
             # Snapshot acquisition quality before intentional socket cancellation.
             # Cancellation itself ends coverage but is not an infrastructure outage.
@@ -744,6 +745,20 @@ class RadarEngine:
             for task in self.tasks:
                 task.cancel()
             await asyncio.gather(*self.tasks, return_exceptions=True)
+            # End coverage before clearing unknown recovery work. Preserve terminal counts,
+            # not a misleading promise that an in-memory queue survives this process.
+            self.onchain.health["connected"] = False
+            self.pumpswap.health["connected"] = False
+            if self.trade_continuity["global_resets"] == previous_global_resets:
+                self.invalidate_trade_coverage()
+            for token in self.tokens.values():
+                if token.flow_venue == "PUMPSWAP":
+                    self.invalidate_postgrad_coverage(token.mint)
+            self.recovery.close_pending()
+            for _, sequence, event in self.queue.heap:
+                self.accounting.finish(event.kind, "shutdown_unprocessed", 0)
+                self.queue.arrivals.pop(sequence, None)
+            self.queue.heap.clear()
             if self.lab_task is not None:
                 await asyncio.gather(self.lab_task, return_exceptions=True)
             try:
@@ -754,7 +769,8 @@ class RadarEngine:
                 if not self.storage_stopped:
                     self.checkpoint(time.time())
                 self.db.evidence_run(self.session, dict(status="STORAGE_STOP" if self.storage_stopped else "STOPPED",
-                    at=time.time(), accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity))
+                    at=time.time(), accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity,
+                    recovery=self.recovery.snapshot(), queue=self.queue.snapshot()))
                 self.db.engine.dispose()
 
     async def run_demo(self):

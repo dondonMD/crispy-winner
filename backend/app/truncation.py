@@ -261,7 +261,7 @@ class TruncationRecovery:
         self.claimed: set[str] = set()
         self.rpc_in_flight = 0
         self.health: dict[str, Any] = {"requests": 0, "successful_requests": 0, "errors": 0, "rate_limits": 0,
-                       "submitted": 0, "accepted": 0, "expired": 0, "completed": 0,
+                       "submitted": 0, "accepted": 0, "expired": 0, "completed": 0, "shutdown_unresolved": 0,
                        "maximum_in_flight": 0, "maximum_rpc_in_flight": 0, "first_attempt_successes": 0, "monitoring_requests_with_backlog": 0,
                        "recovery_requests_with_backlog": 0, "attempts_distribution": dict.fromkeys((0, 1, 2, 3), 0),
                        "deduplicated": 0, "peak_pending": 0, "overflow": 0, "global_gaps": 0,
@@ -299,8 +299,19 @@ class TruncationRecovery:
     def snapshot(self):
         return {**self.health, **self.rpc.truncation_metrics, "scheduling": self.metrics.snapshot(),
                 "in_flight": self.in_flight, "pending": len(self.pending),
+                "accepted_reconciled": self.health["accepted"] == (
+                    self.health["completed"] + self.health["shutdown_unresolved"] + len(self.pending)),
                 "oldest_pending_age": max((time.time() - r.observed for r in self.pending.values()), default=0),
-                "coverage_state": "PENDING RECOVERY" if self.pending else "RESOLVED"}
+                "coverage_state": "PENDING RECOVERY" if self.pending else (
+                    "STOPPED INCOMPLETE" if self.health["shutdown_unresolved"] else "RESOLVED")}
+
+    def close_pending(self):
+        """Only after worker cancellation. Unresolved shutdown work is never a success."""
+        if self.claimed or self.in_flight or self.rpc_in_flight:
+            raise RuntimeError("Recovery workers must stop before closing pending work")
+        self.health["shutdown_unresolved"] += len(self.pending)
+        self.pending.clear()
+        self.changed()
 
     def resolve(self, recovery: Recovery, classification, affected=()):
         if self.pending.get(recovery.signature) is not recovery:
