@@ -2,9 +2,10 @@ import math
 import statistics
 from functools import lru_cache
 from collections import Counter
+from bisect import bisect_right
 
 
-@lru_cache(maxsize=128)
+@lru_cache(maxsize=1536)
 def price_volatility(returns):
     # Exact existing calculation, reused when trade arrivals do not change prices.
     return statistics.pstdev(returns) * 100 if len(returns) > 1 else 0
@@ -39,14 +40,15 @@ def window_features(events, now, seconds, creator=""):
     priced = [e for e in events if e.price is not None and 0 <= now - e.ts <= seconds]
     prices = [e.price for e in priced]
     returns = [math.log(b / a) for a, b in zip(prices, prices[1:]) if a > 0 and b > 0]
-    bins = [
-        sum(
-            e.volume if e.side == "buy" else -e.volume
-            for e in trades
-            if i * seconds / 6 <= now - e.ts < (i + 1) * seconds / 6
-        )
-        for i in range(6)
-    ]
+    # Preserve exact half-open bin boundaries and per-bin summation order.
+    # Each trade belongs to at most one bin; do not rescan all trades six times.
+    boundaries = [i * seconds / 6 for i in range(7)]
+    bin_volumes: list[list[float]] = [[] for _ in range(6)]
+    for event in trades:
+        index = bisect_right(boundaries, now - event.ts) - 1
+        if 0 <= index < 6:
+            bin_volumes[index].append(event.volume if event.side == "buy" else -event.volume)
+    bins = [sum(values) for values in bin_volumes]
     vwap = (
         sum(e.price * e.volume for e in trades if e.price) / sum(e.volume for e in trades if e.price)
         if any(e.price and e.volume for e in trades)
