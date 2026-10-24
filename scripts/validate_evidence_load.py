@@ -32,7 +32,7 @@ def percentile(values, fraction):
     return values[min(len(values) - 1, int((len(values) - 1) * fraction))] if values else None
 
 
-async def validate(seconds, rate, recovery_rate, warm_events, output):
+async def validate(seconds, rate, recovery_rate, warm_events, output, profile_runtime=False):
     # scripts/profile.py must not shadow Python's profiling module in CLI mode.
     script_directory = str(Path(__file__).resolve().parent)
     if script_directory in sys.path:
@@ -107,6 +107,8 @@ async def validate(seconds, rate, recovery_rate, warm_events, output):
                     row["maximum"] = max(row["maximum"], elapsed)
 
             setattr(obj, name, measured)
+        admitted: dict[str, float] = {}
+        queue_waits, producer_lags = [], []
         app_ages, durations = [], []  # Hard bounded by 600s * 100 events/s.
         original_process = engine.process
 
@@ -114,6 +116,9 @@ async def validate(seconds, rate, recovery_rate, warm_events, output):
             start = time.perf_counter()
             if kwargs.get("queued") and event.kind == "trade":
                 app_ages.append(time.time() - event.ts)
+                arrival = admitted.pop(event.event_id, None)
+                if arrival is not None:
+                    queue_waits.append(time.perf_counter() - arrival)
             try:
                 return original_process(event, now, **kwargs)
             finally:
@@ -145,6 +150,8 @@ async def validate(seconds, rate, recovery_rate, warm_events, output):
         async def producer():
             for i in range(int(seconds * rate)):
                 await asyncio.sleep(max(0, started + i / rate - time.perf_counter()))
+                admitted[f"trade:{i}"] = time.perf_counter()
+                producer_lags.append(time.time() - (wall + i / rate))
                 engine.submit(MarketEvent(event_id=f"trade:{i}", mint=f"synthetic:{i % 250}",
                     ts=wall + i / rate, source="Solana WSS", kind="trade", side="buy" if i % 3 else "sell",
                     wallet=f"synthetic-wallet:{i % 64}", volume=.001 + i % 5 / 1000, currency="SOL"))
@@ -152,6 +159,9 @@ async def validate(seconds, rate, recovery_rate, warm_events, output):
         inputs = [asyncio.create_task(producer()), asyncio.create_task(recoveries()),
                   asyncio.create_task(monitor_rpc())]
         samples = []
+        if profile_runtime:
+            profiler.clear()
+            profiler.enable()
         try:
             while time.perf_counter() - started < seconds:
                 samples.append(dict(at=time.perf_counter() - started, rss_mb=process.memory_info().rss / 1048576,
@@ -167,6 +177,10 @@ async def validate(seconds, rate, recovery_rate, warm_events, output):
             pre_stop = dict(accounting=engine.accounting.snapshot(engine.queue),
                             recovery=engine.recovery.snapshot(), queue=engine.queue.snapshot())
         finally:
+            if profile_runtime:
+                profiler.disable()
+                with output.with_suffix(".runtime-profile.txt").open("x") as file:
+                    pstats.Stats(profiler, stream=file).sort_stats("cumulative").print_stats(50)
             stop.set()
             for task in inputs:
                 task.cancel()
@@ -175,7 +189,7 @@ async def validate(seconds, rate, recovery_rate, warm_events, output):
             await engine.stop()
         elapsed = time.perf_counter() - started
         result = dict(synthetic=True, live_network_requests=0, mock_http_requests=mock_requests,
-            cohort_created=False, source_sha=source, harness_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), configured_candidates=settings.max_candidates,
+            cohort_created=False, runtime_profiled=profile_runtime, source_sha=source, harness_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), configured_candidates=settings.max_candidates,
             configured_max_events=settings.max_events, queue_capacity=settings.queue_size,
             configured_freshness=settings.max_data_age_seconds, declared_seconds=seconds, elapsed_seconds=elapsed,
             target_trade_rate=rate, recovery_arrival_rate=recovery_rate, warm_events_per_token=warm_events,
@@ -187,6 +201,8 @@ async def validate(seconds, rate, recovery_rate, warm_events, output):
             continuity=engine.trade_continuity, monitoring_standin_requests=monitoring, stages=stages,
             trade_application_age=dict(p50=percentile(app_ages,.5), p95=percentile(app_ages,.95),
                                        p99=percentile(app_ages,.99), maximum=max(app_ages,default=0)),
+            trade_queue_wait_seconds={k: percentile(queue_waits, f) for k, f in (("p50", .5), ("p95", .95), ("p99", .99), ("maximum", 1))},
+            producer_schedule_lag_seconds={k: percentile(producer_lags, f) for k, f in (("p50", .5), ("p95", .95), ("p99", .99), ("maximum", 1))},
             trade_processing_seconds=dict(p50=percentile(durations,.5), p95=percentile(durations,.95),
                 p99=percentile(durations,.99), maximum=max(durations,default=0)), samples=samples,
             limitation="Synthetic normalized events; no decoder/network/real CURRENT or prospective outcomes. CPU excludes setup; input warm history is synthetic.")
@@ -199,6 +215,7 @@ async def validate(seconds, rate, recovery_rate, warm_events, output):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--profile-runtime", action="store_true", help="Separate diagnostic; profiled latency is not comparable")
     parser.add_argument("--seconds", type=int, default=210)
     parser.add_argument("--rate", type=int, default=15)
     parser.add_argument("--recovery-rate", type=float, default=.7)
@@ -208,6 +225,6 @@ if __name__ == "__main__":
     if not (1 <= args.seconds <= 600 and 1 <= args.rate <= 100 and 0 <= args.recovery_rate <= 2
             and 0 <= args.warm_events <= 500):
         parser.error("Bounded synthetic load required")
-    report = asyncio.run(validate(args.seconds, args.rate, args.recovery_rate, args.warm_events, args.output))
+    report = asyncio.run(validate(args.seconds, args.rate, args.recovery_rate, args.warm_events, args.output, args.profile_runtime))
     print(json.dumps({k: report[k] for k in ("source_sha", "elapsed_seconds", "processed_trades",
                      "peak_rss_mb", "mean_cpu", "trade_application_age")}, indent=2))
