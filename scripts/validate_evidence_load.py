@@ -222,6 +222,8 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
         app_ages: list[float] = []
         durable_ages: list[float] = []
         committed_bins: Counter = Counter()
+        ready_bins: Counter = Counter()
+        processing_bins: Counter = Counter()
         durations: list[float] = []  # Bounded by CLI: 1800s * 100 events/s.
         by_minute: dict[int, list[float]] = {}
         quote_stats: Counter = Counter()
@@ -232,6 +234,7 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
         def processed(event, now=None, **kwargs):
             start = time.perf_counter()
             if kwargs.get("queued") and event.kind == "trade":
+                processing_bins[int((start - started) // 10)] += 1
                 age = time.time() - event.ts
                 app_ages.append(age)
                 by_minute.setdefault(int((time.perf_counter() - started) // 60), []).append(age)
@@ -294,7 +297,9 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
         async def producer():
             for i in range(int(seconds * rate)):
                 await asyncio.sleep(max(0, started + scheduled_offset(i, rate, endurance) - time.perf_counter()))
-                admitted[f"trade:{i}"] = time.perf_counter()
+                ready = time.perf_counter()
+                admitted[f"trade:{i}"] = ready
+                ready_bins[int((ready - started) // 10)] += 1
                 offset = scheduled_offset(i, rate, endurance)
                 producer_lags.append(time.time() - (wall + offset))
                 # Always target the currently admitted set; turnover uses normal create admission.
@@ -436,6 +441,8 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
             trade_application_age=dict(p50=percentile(app_ages,.5), p95=percentile(app_ages,.95),
                                        p99=percentile(app_ages,.99), maximum=max(app_ages,default=0)),
             durable_commits_per_10s=dict(committed_bins),
+            trade_producer_ready_per_10s=dict(ready_bins),
+            trade_processing_starts_per_10s=dict(processing_bins),
             trade_durable_completion_age=dict(count=len(durable_ages),
                 p50=percentile(durable_ages,.5), p95=percentile(durable_ages,.95),
                 p99=percentile(durable_ages,.99), maximum=max(durable_ages,default=0)),

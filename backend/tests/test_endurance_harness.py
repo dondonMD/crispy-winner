@@ -48,6 +48,8 @@ async def test_retained_endurance_shutdown_restart_and_delayed_provider(tmp_path
     assert result['quote_provider_standin']['attempted'] == 1
     assert sum(v for k, v in result['quote_provider_standin'].items() if k != 'attempted') == 1
     assert sum(result['durable_commits_per_10s'].values()) == result['final_accounting']['events']['trade']['persisted']
+    assert sum(result['trade_producer_ready_per_10s'].values()) == 60
+    assert sum(result['trade_processing_starts_per_10s'].values()) == 60
     assert result['trade_durable_completion_age']['count'] == result['final_accounting']['events']['trade']['persisted']
     assert result['trade_durable_completion_age']['p99'] >= result['trade_application_age']['p99']
     assert 'Database.retention' in result['stages'] and 'module.evaluate' in result['stages']
