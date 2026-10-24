@@ -344,6 +344,16 @@ def evaluate(db, settings, mode="real", version=None, horizon=300, now=None):
 
 
 def replay(db, session):
+    from backend.app.db import EvidenceRun
+    from sqlalchemy import inspect
+
+    if inspect(db.engine).has_table("evidence_runs"):
+        with db.sessions() as receipt_db:
+            storage = receipt_db.get(EvidenceRun, "storage")
+            if storage and json.loads(storage.payload).get("raw_omitted"):
+                raise ValueError("Raw event replay is storage-censored")
+    if db.storage_audit.get("raw_omitted") or db.storage_audit.get("raw_reclaimed"):
+        raise ValueError("Raw event replay is storage-censored")
     """Chronological replay through the same scoring, risk, state and paper pipeline.
 
     Uses an isolated temporary database, startup context, and recorded contemporaneous
@@ -384,7 +394,7 @@ def replay(db, session):
             engine.tokens[token.mint] = token
         for row in db.iterate("event", session=session):
             event = MarketEvent.model_validate(row["event"])
-            before = row.get("context_before", {})
+            before = db.resolve_context(row.get("context_before", {}))
             engine.metrics.update(
                 resource_pressure=before.get("resource_pressure", False),
                 storage_full=before.get("storage_full", False),

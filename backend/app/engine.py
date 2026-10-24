@@ -13,7 +13,7 @@ from alembic.config import Config
 
 from backend.app.companion import companion_view
 from backend.app.config import ROOT
-from backend.app.db import Database
+from backend.app.db import Database, StorageBudgetError
 from backend.app.discovery import DiscoveryProvider, OnchainPumpDiscovery
 from backend.app.domain import Deduplicator, MarketEvent, PriorityBuffer, State, Token, TRANSITIONS
 from backend.app.economics import PositionSizer, TradeCostEstimator, evaluate_candidate
@@ -43,6 +43,8 @@ class RadarEngine:
         with self.db.engine.begin() as conn:
             cfg.attributes["connection"] = conn
             command.upgrade(cfg, "head")
+        self.db.configure_budget(settings.db_limit_mb)
+        self.storage_stopped = False
         self.prospective = None
         selected_cohort = cohort_id or (os.getenv("RADAR_COHORT") if not offline else None)
         if not selected_cohort and not offline:
@@ -58,6 +60,7 @@ class RadarEngine:
                 self.db.engine.dispose()
                 raise
             self.db.record_observer = self.prospective.on_record
+        self.last_audit = 0.0
         self.last_cohort_quality = 0.0
         self.cohort_started = time.time()
         self.queue = PriorityBuffer(settings.queue_size)
@@ -326,12 +329,17 @@ class RadarEngine:
 
     async def drain_events(self):
         batch = self.queue.drain(100, self.settings.max_data_age_seconds)
-        index = 0
+        index = -1
         try:
             for index, event in enumerate(batch):
                 try:
                     # Never reuse the time captured before the batch.
                     self.process(event, time.time(), queued=True)
+                except StorageBudgetError:
+                    self.storage_stopped = True
+                    self.running = False
+                    self.invalidate_trade_coverage()
+                    raise
                 except Exception:
                     if event.kind == "trade":
                         self.invalidate_token_trade_coverage(event.mint, reason="processing")
@@ -565,7 +573,8 @@ class RadarEngine:
             token.last_signal = evaluation_at
             self.paper.request_entry(token, evaluation_at, self.version)
         if not self.metrics.get("storage_full"):
-            self.db.add(
+            context_before = self.db.context_reference(context_before)
+            record_id = self.db.add(
                 "event",
                 {
                     "event": event.model_dump(),
@@ -580,7 +589,7 @@ class RadarEngine:
                 event.ts,
             )
         if not self.metrics.get("storage_full"):
-            self._event_persisted = True
+            self._event_persisted = bool(record_id)
         if event.price:
             token.history.append(
                 {
@@ -742,7 +751,10 @@ class RadarEngine:
             finally:
                 await self.rpc.close()
                 await self.dex.close()
-                self.checkpoint(time.time())
+                if not self.storage_stopped:
+                    self.checkpoint(time.time())
+                self.db.evidence_run(self.session, dict(status="STORAGE_STOP" if self.storage_stopped else "STOPPED",
+                    at=time.time(), accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity))
                 self.db.engine.dispose()
 
     async def run_demo(self):
@@ -1092,6 +1104,10 @@ class RadarEngine:
                 self.metrics = self.resources.sample()
                 if now - self.last_cohort_quality >= 30:
                     self.capture_cohort_quality(now)
+                if now - self.last_audit >= 30:
+                    self.last_audit = now
+                    self.db.evidence_run(self.session, dict(status="RUNNING", at=now,
+                        accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity))
                 if self.metrics["resource_pressure"]:
                     self.alert("SYSTEM", "", "RESOURCE PRESSURE — reducing monitoring", now)
                     for token in self.tokens.values():
@@ -1118,6 +1134,13 @@ class RadarEngine:
                 if any(t.done() for t in self.tasks if t.get_name() != "monitor"):
                     self.metrics["resource_pressure"] = True
                     self.alert("SYSTEM", "", "Background provider stopped; entries blocked", now)
+            except StorageBudgetError:
+                self.storage_stopped = True
+                self.running = False
+                self.invalidate_trade_coverage()
+                self.db.evidence_run(self.session, dict(status="STORAGE_STOP", at=time.time(),
+                    accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity))
+                return
             except CohortIntegrityError:
                 self.running = False
                 raise
@@ -1435,7 +1458,9 @@ class RadarEngine:
             "mode": self.settings.mode,
             "simulated": self.settings.mode == "DEMO",
             "session": self.session,
-            "evidence_pipeline": self.accounting.snapshot(self.queue),
+            "evidence_pipeline": dict(self.accounting.snapshot(self.queue),
+                submission_filters={"migration_duplicate": self.submission_filters},
+                storage=dict(self.db.storage_audit), storage_stopped=self.storage_stopped),
             "strategy_version": self.version,
             "timestamp": now,
             "tokens": [self.token_view(t, now) for t in tokens],
