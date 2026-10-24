@@ -158,7 +158,7 @@ def test_guard_uses_writer_connection_and_preserves_atomic_failure(tmp_path):
     assert db.reserve_event("one", 100)
     db.add("outcome", {"net_return_pct": -100})
     assert len(checkouts) == 2
-    assert sum("PRAGMA freelist_count" in q for q in queries) == 2
+    assert sum("PRAGMA freelist_count" in q for q in queries) == 0
     assert not any("PRAGMA page_size" in q for q in queries)
 
     def fail(conn):

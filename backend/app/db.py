@@ -2,6 +2,8 @@ import json
 import time
 import hashlib
 import threading
+import os
+import fnmatch
 from contextlib import nullcontext
 from collections import OrderedDict
 from pathlib import Path
@@ -179,12 +181,16 @@ class Database:
         if not self.budget:
             return True
         allocated = self.size()
-        with (nullcontext(connection) if connection is not None else self.engine.connect()) as db:
-            reusable: int = db.exec_driver_sql("PRAGMA freelist_count").scalar_one() * self.page_size
         physical_reserve = max(int(self.budget * .05), 262144)
         if allocated >= self.budget - physical_reserve:
             # A reader may pin WAL pages. More cleanup writes then INCREASE allocation.
             raise StorageBudgetError("Physical evidence storage reserve reached")
+        # Reusable pages are nonnegative. Below this bound even zero reusable
+        # bytes pass the SAME logical limit; no SQLite query or cached size needed.
+        if allocated < self.budget * (.70 if raw else .85):
+            return True
+        with (nullcontext(connection) if connection is not None else self.engine.connect()) as db:
+            reusable: int = db.exec_driver_sql("PRAGMA freelist_count").scalar_one() * self.page_size
         if allocated - reusable >= self.budget * .85:
             if raw:
                 return False
@@ -398,7 +404,11 @@ class Database:
                 yield row
 
     def size(self):
-        return sum(p.stat().st_size for p in self.path.parent.glob(self.path.name + "*") if p.is_file())
+        # Same prefix glob and regular-file/symlink semantics; DirEntry reuses
+        # directory metadata instead of constructing and statting each Path twice.
+        with os.scandir(self.path.parent) as entries:
+            return sum(entry.stat().st_size for entry in entries
+                       if fnmatch.fnmatchcase(entry.name, self.path.name + "*") and entry.is_file())
 
     def retention(self, settings, now=None):
         now = time.time() if now is None else now

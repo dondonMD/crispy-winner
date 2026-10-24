@@ -32,7 +32,7 @@ def test_exact_two_transactions_indexed_identity_and_no_raw_observer(tmp_path):
     assert db.reserve_event("one", 100)
     assert db.add("event", {"negative": "UNAVAILABLE"}, "synthetic", "test", 100)
     assert len(commits) == len(checkouts) == 2
-    assert sum(s.startswith("PRAGMA freelist_count") for s in statements) == 2
+    assert sum(s.startswith("PRAGMA freelist_count") for s in statements) == 0
     assert sum(s.startswith("INSERT INTO event_identities") for s in statements) == 1
     assert sum(s.startswith("INSERT INTO records") for s in statements) == 1
     assert not callbacks
