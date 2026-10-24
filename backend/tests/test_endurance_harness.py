@@ -61,3 +61,14 @@ async def test_retained_endurance_shutdown_restart_and_delayed_provider(tmp_path
     assert result['continuity']['global_resets'] == 1
     with pytest.raises(FileExistsError):
         await validate(1, 1, 0, 0, output, endurance=True)
+
+
+def test_report_hash_roundtrips_nested_integer_keys_without_mutating_input():
+    import hashlib
+    import json
+    from scripts.validate_evidence_load import seal_report
+    original = {"scheduling": {"rolling": {1: 2, 5: 8, 10: 9}}}
+    record = json.loads(json.dumps(seal_report(original)))
+    digest = record.pop("sha256")
+    assert hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest() == digest
+    assert original == {"scheduling": {"rolling": {1: 2, 5: 8, 10: 9}}}

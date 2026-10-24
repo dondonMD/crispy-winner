@@ -50,6 +50,14 @@ def storage_bytes(path):
         ("db", path), ("wal", Path(str(path) + "-wal")), ("shm", Path(str(path) + "-shm")))}
 
 
+def seal_report(result):
+    # Normalize integer dictionary keys before hashing so JSON reload is reproducible.
+    normalized = json.loads(json.dumps(result, allow_nan=False))
+    encoded = json.dumps(normalized, sort_keys=True, allow_nan=False)
+    normalized["sha256"] = hashlib.sha256(encoded.encode()).hexdigest()
+    return normalized
+
+
 async def validate(seconds, rate, recovery_rate, warm_events, output, profile_runtime=False, endurance=False):
     # scripts/profile.py must not shadow Python's profiling module in CLI mode.
     script_directory = str(Path(__file__).resolve().parent)
@@ -321,8 +329,7 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
             trade_processing_seconds=dict(p50=percentile(durations,.5), p95=percentile(durations,.95),
                 p99=percentile(durations,.99), maximum=max(durations,default=0)), samples=samples,
             limitation="Synthetic normalized events; no decoder/network/real CURRENT or prospective outcomes. CPU excludes setup; input warm history is synthetic.")
-        encoded = json.dumps(result, sort_keys=True)
-        result["sha256"] = hashlib.sha256(encoded.encode()).hexdigest()
+        result = seal_report(result)
         with output.open("x") as file:
             json.dump(result, file, indent=2)
         return result
