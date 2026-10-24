@@ -15,8 +15,9 @@ def bounded(value):
     return max(0, min(100, value))
 
 
-def window_features(events, now, seconds, creator=""):
-    trades = [e for e in events if e.kind == "trade" and 0 <= now - e.ts <= seconds]
+def window_features(events, now, seconds, creator="", _prepared=None):
+    trades = (_prepared[0] if _prepared is not None else
+              [e for e in events if e.kind == "trade" and 0 <= now - e.ts <= seconds])
     buys = [e for e in trades if e.side == "buy"]
     sells = [e for e in trades if e.side == "sell"]
     wallets = {e.wallet for e in buys if e.wallet}
@@ -37,7 +38,8 @@ def window_features(events, now, seconds, creator=""):
     consistent_units = bool(trades) and len(currency) == 1 and "unknown" not in currency
     recent = sum(e.volume if e.side == "buy" else -e.volume for e in trades if now - e.ts <= seconds / 2)
     previous = sum(e.volume if e.side == "buy" else -e.volume for e in trades if now - e.ts > seconds / 2)
-    priced = [e for e in events if e.price is not None and 0 <= now - e.ts <= seconds]
+    priced = (_prepared[1] if _prepared is not None else
+              [e for e in events if e.price is not None and 0 <= now - e.ts <= seconds])
     prices = [e.price for e in priced]
     returns = [math.log(b / a) for a, b in zip(prices, prices[1:]) if a > 0 and b > 0]
     # Preserve exact half-open bin boundaries and per-bin summation order.
@@ -93,7 +95,8 @@ def window_features(events, now, seconds, creator=""):
     }
 
 
-def cached_window_features(events, now, seconds, creator, cache, *, fingerprint_checked=False):
+def cached_window_features(events, now, seconds, creator, cache, *,
+                           fingerprint_checked=False, shared=None):
     # Membership is ALWAYS rebuilt using the exact inclusive freshness boundaries.
     # Cache only time-independent math; never evidence continuity, age or decisions.
     trades = [e for e in events if e.kind == "trade" and 0 <= now - e.ts <= seconds]
@@ -101,22 +104,29 @@ def cached_window_features(events, now, seconds, creator, cache, *, fingerprint_
     key: tuple
     if fingerprint_checked:
         # Caller verified ALL business fields once; timestamp membership is then sufficient.
-        key = (seconds, tuple(e.ts for e in trades), tuple(e.ts for e in priced))
+        key = (tuple(e.ts for e in trades), tuple(e.ts for e in priced))
     else:
         key = (seconds, creator,
                tuple((e.ts, e.side, e.wallet, repr(e.volume), e.currency, e.price) for e in trades),
                tuple(e.price for e in priced))
+    if cache.get("key") != key and fingerprint_checked and shared is not None:
+        sibling = next((c for c in shared.values() if c.get("key") == key), None)
+        if sibling is not None:
+            cache.update(key=key, value=sibling["value"])
     if cache.get("key") != key:
-        value = window_features(events, now, seconds, creator)
+        value = window_features(events, now, seconds, creator, (trades, priced))
         cache.update(key=key, value=value)
     else:
         value = dict(cache["value"])
         recent, previous = [], []
         recent_count = 0
+        sellers = set()
         bins: list[list[float]] = [[] for _ in range(6)]
         boundaries = [i * seconds / 6 for i in range(7)]
         for e in trades:
             age = now - e.ts
+            if e.side == "sell" and e.wallet:
+                sellers.add(e.wallet)
             signed = e.volume if e.side == "buy" else -e.volume
             if age <= seconds / 2:
                 recent.append(signed)
@@ -128,6 +138,11 @@ def cached_window_features(events, now, seconds, creator, cache, *, fingerprint_
                 bins[index].append(signed)
         totals = [sum(v) for v in bins]
         value.update(
+            buyer_arrival_rate=value["raw_unique_buyers"] / seconds,
+            seller_arrival_rate=len(sellers) / seconds,
+            trade_velocity=len(trades) / seconds,
+            volume_velocity=(value["buy_volume"] + value["sell_volume"]) / seconds
+                            if value["units_valid"] else None,
             flow_acceleration=sum(recent) - sum(previous) if value["units_valid"] else None,
             trade_acceleration=(recent_count * 2 - len(trades))
                                / (seconds / 2),
@@ -153,7 +168,7 @@ def calculate_features(token, now):
         setattr(token, "_feature_window_cache", cache)
     # Six private window slots per bounded active token; no cached continuity or decisions.
     return {str(s): cached_window_features(events, now, s, token.creator,
-                cache["windows"].setdefault(s, {}), fingerprint_checked=True)
+                cache["windows"].setdefault(s, {}), fingerprint_checked=True, shared=cache["windows"])
             for s in [10, 30, 60, 180, 300, 600]}
 
 

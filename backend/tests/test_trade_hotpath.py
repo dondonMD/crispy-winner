@@ -84,7 +84,7 @@ def test_unchanged_inputs_reuse_static_math_but_never_continuity(monkeypatch):
     first["180"]["trade_evidence"] = "CURRENT"
     first["180"]["cluster_evidence"].append("poison")
     second = calculate_features(t, 102)
-    assert len(calls) == 6 and len(t._feature_window_cache["windows"]) == 6
+    assert len(calls) == 1 and len(t._feature_window_cache["windows"]) == 6
     assert "trade_evidence" not in second["180"] and "poison" not in second["180"]["cluster_evidence"]
     assert second["180"] == original(t.events, 102, 180, t.creator)
     t.events = deque(maxlen=500)  # Actual observation loss must not retain old breadth.
@@ -256,3 +256,27 @@ def test_unknown_quote_shortcut_preserves_config_reads_and_ineligibility(monkeyp
         t.verified_quote_mint = quote
         assert module.signal_snapshot(t, {}, 101, Settings(mode="OBSERVE")) is None
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize("currency", ["SOL", "unknown"])
+def test_cross_window_sharing_recomputes_all_horizon_dependent_fields(currency):
+    t = Token("synthetic", "", "", 100)
+    for i in range(5):
+        t.events.append(
+            MarketEvent(
+                mint=t.mint,
+                source="SYNTHETIC",
+                event_id=str(i),
+                ts=100 + i,
+                kind="trade",
+                side="buy" if i % 2 else "sell",
+                volume=0.01 * (i + 1),
+                currency=currency,
+                wallet=f"w{i}",
+                price=1 + i / 10,
+            )
+        )
+    for now in [105, 105.01, 110, 130, 101, 200, 800]:
+        actual = calculate_features(t, now)
+        expected = {str(s): window_features(t.events, now, s, t.creator) for s in [10, 30, 60, 180, 300, 600]}
+        assert actual == expected
