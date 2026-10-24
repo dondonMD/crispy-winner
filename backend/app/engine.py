@@ -1184,8 +1184,7 @@ class RadarEngine:
                 for token in self.tokens.values():
                     token.degraded = True
                 self.alert("SYSTEM", "", "Monitor error; data degraded and entries blocked", time.time())
-            # Keep the idle polling interval; do not sleep idle time with admitted work waiting.
-            await asyncio.sleep(0 if self.queue.heap else 0.25)
+            await asyncio.sleep(0.25)
 
     def token_view(self, token, now, detail=False):
         view = {

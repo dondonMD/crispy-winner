@@ -221,8 +221,8 @@ def test_load_driver_counts_detached_work_as_outstanding():
     assert not outstanding(engine)
 
 
-@pytest.mark.parametrize("backlog,expected", [(False, .25), (True, 0)])
-async def test_consumer_yields_without_idle_sleep_when_work_is_waiting(tmp_path, monkeypatch, backlog, expected):
+@pytest.mark.parametrize("backlog,expected", [(False, .25), (True, .25)])
+async def test_consumer_keeps_validated_poll_interval_under_backlog(tmp_path, monkeypatch, backlog, expected):
     e = RadarEngine(Settings(mode="OBSERVE"), tmp_path / "idle.db", offline=True)
     e.last_lab = e.last_maintenance = time.time()
     if backlog:
