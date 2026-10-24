@@ -24,6 +24,7 @@ from backend.app.providers import DexScreenerProvider, PumpPortalProvider, Solan
 from backend.app.truncation import TruncationRecovery
 from backend.app.pumpswap import PumpSwapFlow, VerifiedPool
 from backend.app.resources import ResourceMonitor
+from backend.app.evidence_pipeline import EventAccounting
 from backend.app.intelligence import Intelligence
 from backend.app.handoff import HandoffTrace
 from backend.app.prospective import ProspectiveCohort, CohortIntegrityError
@@ -60,6 +61,8 @@ class RadarEngine:
         self.last_cohort_quality = 0.0
         self.cohort_started = time.time()
         self.queue = PriorityBuffer(settings.queue_size)
+        self.accounting = EventAccounting()
+        self.submission_filters = 0
         self.tokens: dict[str, Token] = {}
         self.creators: OrderedDict = OrderedDict()
         self.dedup = Deduplicator()
@@ -92,7 +95,7 @@ class RadarEngine:
         self.last_handoff_sample = 0.0
         self.trade_observations = {"buy": 0, "sell": 0}
         self.trade_continuity: dict[str, Any] = {"global_resets": 0, "per_token_resets": 0,
-                                 "per_token_reasons": dict.fromkeys(("decode", "stale", "queue", "buffer", "recovery"), 0)}
+                                 "per_token_reasons": dict.fromkeys(("decode", "stale", "queue", "buffer", "recovery", "processing"), 0)}
         self.out_of_order = 0
         self.duplicates = 0
         self.rejected_payloads = 0
@@ -138,6 +141,7 @@ class RadarEngine:
         self.background_backoff_level = 0
         self.rpc_errors_seen = 0
         self.last_security_scan = 0.0
+        self.lab_task = None
         self.last_lab = 0.0
         self.last_maintenance = 0.0
         self.restore()
@@ -232,6 +236,7 @@ class RadarEngine:
         if event.kind == "migration" and event.signature:
             identity = f"{event.signature}:migration:{event.mint}"
             if identity in self.dedup.seen or identity in self.migration_submissions.seen:
+                self.submission_filters += 1
                 return False
         token = self.tokens.get(event.mint)
         priority = token.priority()[0] if token else 5
@@ -304,7 +309,51 @@ class RadarEngine:
         self.transition(token, State.WATCHING, "Cheap activity screening", event.ts)
         return token
 
-    def process(self, event, now=None):
+    def process(self, event, now=None, *, queued=False):
+        started = time.perf_counter()
+        self._process_reason = "exception"
+        self._event_persisted = False
+        try:
+            result = self._process(event, now)
+            if result:
+                self._process_reason = "processed"
+            return result
+        finally:
+            if queued:
+                self.accounting.finish(event.kind, self._process_reason, time.perf_counter() - started)
+                self.queue.in_processing[event.kind] -= 1
+                self.accounting.persisted[event.kind] += self._event_persisted
+
+    async def drain_events(self):
+        batch = self.queue.drain(100, self.settings.max_data_age_seconds)
+        index = 0
+        try:
+            for index, event in enumerate(batch):
+                try:
+                    # Never reuse the time captured before the batch.
+                    self.process(event, time.time(), queued=True)
+                except Exception:
+                    if event.kind == "trade":
+                        self.invalidate_token_trade_coverage(event.mint, reason="processing")
+                    else:
+                        self.invalidate_trade_coverage()
+                    token = self.tokens.get(event.mint)
+                    if token:
+                        token.degraded = True
+                    log.error("Event processing failed; kind=%s", event.kind)
+                if index % 5 == 4:
+                    await asyncio.sleep(0)
+        finally:
+            # Cancellation after a yield must not silently lose the detached remainder.
+            for event in batch[index + 1:]:
+                self.accounting.finish(event.kind, "cancelled", 0)
+                self.queue.in_processing[event.kind] -= 1
+                if event.kind == "trade":
+                    self.invalidate_token_trade_coverage(event.mint, reason="processing")
+                else:
+                    self.invalidate_trade_coverage()
+
+    def _process(self, event, now=None):
         recovered_source = event.kind == "migration" and event.source == "Recovered Pump instruction"
         now = (time.time() if recovered_source else event.ts) if now is None else now
         recovered_migration = False
@@ -313,33 +362,41 @@ class RadarEngine:
             if error:
                 self.recovery.health[error] += 1
                 self.rejected_payloads += 1
+                self._process_reason = "recovery_provenance"
                 return False
             recovered_migration = True
         if event.source == "DEMO" and self.settings.mode != "DEMO":
             self.rejected_payloads += 1
+            self._process_reason = "demo_isolation"
             return False
         if event.kind == "trade" and event.source in ("Solana WSS", "PumpSwap WSS") and event.mint not in self.tokens:
+            self._process_reason = "untracked"
             return False
         existing = self.tokens.get(event.mint)
         if event.kind == "trade" and existing:
             if existing.flow_venue == "PUMPSWAP" and event.source != "PumpSwap WSS":
                 # History already stored before migration remains; late curve flow supplies no post-grad evidence.
+                self._process_reason = "venue"
                 return False
             if event.source == "PumpSwap WSS":
                 pool = self.pumpswap.pools.get(event.evidence.get("pool"))
                 if (existing.flow_venue != "PUMPSWAP" or not pool or pool.mint != existing.mint
                         or event.ts < existing.flow_epoch):
+                    self._process_reason = "pool_epoch"
                     return False
         if not recovered_migration and abs(now - event.ts) > self.settings.max_data_age_seconds:
             if event.kind == "trade" and event.mint in self.tokens:
                 self.invalidate_token_trade_coverage(event.mint, reason="stale", now=now)
             self.rejected_payloads += 1
+            self._process_reason = "stale"
             return False
         if not self.dedup.accept(event.event_id):
             self.duplicates += 1
+            self._process_reason = "duplicate_memory"
             return False
         if not self.metrics.get("storage_full") and not self.db.reserve_event(event.event_id, event.ts):
             self.duplicates += 1
+            self._process_reason = "duplicate_db"
             return False
         if event.kind == "create":
             if event.mint in self.tokens or not self.launch_dedup.accept(event.mint) or (
@@ -348,6 +405,7 @@ class RadarEngine:
             ):
                 self.duplicates += 1
                 self.duplicate_discoveries += 1
+                self._process_reason = "duplicate_launch"
                 return False
         context_before = {
             "resource_pressure": self.metrics.get("resource_pressure", False),
@@ -361,10 +419,12 @@ class RadarEngine:
         }
         token = self.tokens.get(event.mint) or self.admit(event)
         if token is None:
+            self._process_reason = "admission"
             return False
         if event.ts < token.last_event and not recovered_migration and not (event.kind == "trade" and event.source in ("Solana WSS", "PumpSwap WSS")):
             token.degraded = True
             self.out_of_order += 1
+            self._process_reason = "out_of_order"
             return False
         token.last_event = max(token.last_event, event.ts)
         if token.creator:
@@ -519,6 +579,8 @@ class RadarEngine:
                 self.session,
                 event.ts,
             )
+        if not self.metrics.get("storage_full"):
+            self._event_persisted = True
         if event.price:
             token.history.append(
                 {
@@ -545,6 +607,7 @@ class RadarEngine:
         if event.kind == "trade":
             self.trade_observations[event.side] = self.trade_observations.get(event.side, 0) + 1
         return True
+
 
     def analyse(self, token, now):
         token.last_analysis = now
@@ -672,6 +735,8 @@ class RadarEngine:
             for task in self.tasks:
                 task.cancel()
             await asyncio.gather(*self.tasks, return_exceptions=True)
+            if self.lab_task is not None:
+                await asyncio.gather(self.lab_task, return_exceptions=True)
             try:
                 self.collector.close_prospective()
             finally:
@@ -1008,8 +1073,14 @@ class RadarEngine:
                     if mint in self.tokens:
                         self.tokens[mint].degraded = True
                 self.queue.sample_depth(now)
-                for event in self.queue.drain(100, self.settings.max_data_age_seconds):
-                    self.process(event, now)
+                tick_gap = now - self.accounting.last_tick
+                self.accounting.largest_tick_gap = max(self.accounting.largest_tick_gap, tick_gap)
+                if tick_gap > self.settings.max_data_age_seconds or tick_gap < 0:
+                    self.accounting.observation_gaps += 1
+                    self.invalidate_trade_coverage()
+                self.accounting.last_tick = now
+                await self.drain_events()
+                now = time.time()
                 for token in list(self.tokens.values()):
                     if now - token.last_analysis >= 1:
                         self.analyse(token, now)
@@ -1027,16 +1098,16 @@ class RadarEngine:
                         while len(token.events) > 100:
                             token.events.popleft()
                         token.degraded = True
-                if now - self.last_lab > 60:
-                    self.lab = await asyncio.to_thread(
-                        evaluate,
-                        self.db,
-                        self.settings,
+                if self.lab_task is not None and self.lab_task.done():
+                    self.lab = self.lab_task.result()
+                    self.lab_task = None
+                if now - self.last_lab > 60 and self.lab_task is None:
+                    # Read-only evaluation must not suspend queue consumption.
+                    self.lab_task = asyncio.create_task(asyncio.to_thread(
+                        evaluate, self.db, self.settings,
                         "demo" if self.settings.mode == "DEMO" else "real",
-                        self.version,
-                        300,
-                        now,
-                    )
+                        self.version, 300, now,
+                    ))
                     self.last_lab = now
                 if now - self.last_maintenance > 60:
                     await asyncio.to_thread(self.db.retention, self.settings, now)
@@ -1364,6 +1435,7 @@ class RadarEngine:
             "mode": self.settings.mode,
             "simulated": self.settings.mode == "DEMO",
             "session": self.session,
+            "evidence_pipeline": self.accounting.snapshot(self.queue),
             "strategy_version": self.version,
             "timestamp": now,
             "tokens": [self.token_view(t, now) for t in tokens],

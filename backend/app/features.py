@@ -1,6 +1,13 @@
 import math
 import statistics
+from functools import lru_cache
 from collections import Counter
+
+
+@lru_cache(maxsize=128)
+def price_volatility(returns):
+    # Exact existing calculation, reused when trade arrivals do not change prices.
+    return statistics.pstdev(returns) * 100 if len(returns) > 1 else 0
 
 
 def bounded(value):
@@ -75,7 +82,7 @@ def window_features(events, now, seconds, creator=""):
         "flow_acceleration": recent - previous if consistent_units else None,
         "buy_pressure_persistence": sum(x > 0 for x in bins) / 6,
         "sell_pressure_persistence": sum(x < 0 for x in bins) / 6,
-        "volatility_pct": statistics.pstdev(returns) * 100 if len(returns) > 1 else 0,
+        "volatility_pct": price_volatility(tuple(returns)),
         "drawdown_pct": (1 - prices[-1] / max(prices)) * 100 if prices else 0,
         "price_move_pct": (prices[-1] / prices[0] - 1) * 100 if len(prices) > 1 else 0,
         "vwap": vwap,

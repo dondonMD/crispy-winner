@@ -1,4 +1,4 @@
-from collections import OrderedDict, deque
+from collections import OrderedDict, deque, Counter
 from dataclasses import dataclass, field
 from enum import StrEnum
 import heapq
@@ -79,6 +79,11 @@ class PriorityBuffer:
 
     def __init__(self, maximum):
         self.maximum = maximum
+        self.submitted: Counter = Counter()
+        self.accepted: Counter = Counter()
+        self.rejected: Counter = Counter()
+        self.evicted: Counter = Counter()
+        self.in_processing: Counter = Counter()
         self.heap: list = []
         self.sequence = 0
         self.created = time.time()
@@ -96,17 +101,20 @@ class PriorityBuffer:
         self.affected: deque[str] = deque(maxlen=1000)
 
     def put(self, event, priority):
+        self.submitted[event.kind] += 1
         self.sequence += 1
         item = (priority, self.sequence, event)
         if len(self.heap) >= self.maximum:
             self.dropped += 1
             if priority <= self.heap[0][0]:
+                self.rejected[event.kind] += 1
                 self.record_drop(event)
                 self.affected.append(event.mint)
                 return False
             removed = heapq.heapreplace(self.heap, item)
             self.arrivals.pop(removed[1], None)
             self.record_accept(item)
+            self.evicted[removed[2].kind] += 1
             self.record_drop(removed[2])
             self.affected.append(removed[2].mint)
             return True
@@ -115,6 +123,7 @@ class PriorityBuffer:
         return True
 
     def record_accept(self, item):
+        self.accepted[item[2].kind] += 1
         self.arrivals[item[1]] = time.time()
         self.peak_depth = max(self.peak_depth, len(self.heap))
         self.accepted_trades += item[2].kind == "trade"
@@ -151,6 +160,7 @@ class PriorityBuffer:
         selected = sorted(self.heap, key=lambda x: (-x[0], x[1]))[:limit]
         now = time.time()
         for _, sequence, event in selected:
+            self.in_processing[event.kind] += 1
             arrived = self.arrivals.pop(sequence, now)
             if abs(arrived - event.ts) <= max_age < now - event.ts:
                 self.stale_while_queued += 1
