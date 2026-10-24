@@ -67,3 +67,15 @@ def test_sensitive_path_rules_cover_private_variants():
         "backend/tests/fixtures/early_edge/sdk_quotes.json",
     ]:
         assert not sensitive_path(path)
+
+
+def test_credential_filename_is_reported_without_exposing_value(tmp_path):
+    git = repository(tmp_path)
+    token = "ghp_" + "c" * 36
+    (tmp_path / (token + ".txt")).write_text("Synthetic marker")
+    git("add", "-f", ".")
+    git("commit", "-m", "Synthetic filename fixture")
+    result = audit(tmp_path)
+    assert result["verdict"] == "REVIEW_REQUIRED"
+    assert any(f["category"] == "credential_in_filename" for f in result["findings"])
+    assert token not in str(result)

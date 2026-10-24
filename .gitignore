@@ -29,3 +29,12 @@ coverage/
 *.pstats
 .coverage
 htmlcov/
+# Credential/key material has no place in this research repository
+*.pem
+*.key
+*.p12
+*.keystore
+id_rsa
+id_ed25519
+wallet.json
+keypair.json

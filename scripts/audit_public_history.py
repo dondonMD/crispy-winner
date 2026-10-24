@@ -24,6 +24,12 @@ PATTERNS = {
 }
 
 
+def redacted_path(path):
+    if any(pattern.search(path) for pattern in PATTERNS.values()):
+        return "[REDACTED_PATH_SHA256:" + hashlib.sha256(path.encode()).hexdigest() + "]"
+    return path
+
+
 def sensitive_path(path):
     p = Path(path)
     if p.name == '.env.example':
@@ -62,29 +68,34 @@ def audit(repo, ref='HEAD'):
         raise ValueError('Bounded audit scope exceeded; no clean result')
     total = 0
     for oid, names in paths.items():
+        for path in names:
+            if redacted_path(path) != path:
+                findings.append(dict(blob=oid, path_sha256=hashlib.sha256(path.encode()).hexdigest(),
+                                     category='credential_in_filename'))
+        display_names = sorted(redacted_path(path) for path in names)
         size = int(git('cat-file', '-s', oid))
         total += size
         if size > 2*1024*1024 or total > 64*1024*1024:
             raise ValueError('Bounded audit bytes exceeded; no clean result')
         raw = git('cat-file', 'blob', oid)
         if raw.startswith(b'SQLite format 3\0'):
-            findings.append(dict(blob=oid, paths=sorted(names), category='sqlite_database'))
+            findings.append(dict(blob=oid, paths=display_names, category='sqlite_database'))
         try:
             content = raw.decode('utf-8')
         except UnicodeDecodeError:
-            findings.append(dict(blob=oid, paths=sorted(names), category='binary_requires_review'))
+            findings.append(dict(blob=oid, paths=display_names, category='binary_requires_review'))
             continue
         for number, line in enumerate(content.splitlines(), 1):
             for label, pattern in PATTERNS.items():
                 for match in pattern.finditer(line):
-                    findings.append(dict(blob=oid, paths=sorted(names), line=number, category=label,
+                    findings.append(dict(blob=oid, paths=display_names, line=number, category=label,
                         match_sha256=hashlib.sha256(match.group().encode()).hexdigest()))
     for commit in commits:
         message = git('show', '-s', '--format=%B', commit).decode()
         for label, pattern in PATTERNS.items():
             if pattern.search(message):
                 findings.append(dict(commit=commit, category=label, location='commit_message'))
-    restricted = sorted({p for names in paths.values() for p in names if sensitive_path(p)})
+    restricted = sorted({redacted_path(p) for names in paths.values() for p in names if sensitive_path(p)})
     return dict(head=head, commits=len(commits), blobs=len(paths), blob_bytes=total,
         sensitive_paths=restricted, findings=findings,
         verdict='REVIEW_REQUIRED' if restricted or findings else 'PATTERN_AND_PATH_SCAN_CLEAR',

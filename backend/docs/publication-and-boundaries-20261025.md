@@ -13,3 +13,21 @@ New scripts/audit_public_history.py preserves a reproducible, read-only bounded 
 .gitignore had gaps for .env.* and SQLite variants. Added environment variants/private tool credentials, *.sqlite*, disposable profile/temp/log/coverage outputs, while retaining public .env.example.11 exact ignore checks passed. Existing tracked history had no sensitive file hidden by these changes; adding ignore rules is not history sanitization.
 
 GitHub connector confirms repository is public, remote main still2bebbf2863de21041fffca80fb99507356a815b6; approved remediation ref absent (search empty and exact git-ref GET404). Local git ls-remote fails DNS resolution. Publication status below must be updated only from an actual push result; remote existence/main verification alone is NOT a backup.
+
+### First authorized push result
+
+After hardening commit5560b263d279da2e19d35ab130fc91e0188f1dc4, reran the full reachable-history audit:74 commits,515 blobs,6,566,909 bytes; no findings. Rechecked remote main via connector (unchanged) and exact remediation ref (404). Executed EXACT authorized `git push -u origin remediation/early-edge-evidence-readiness`: exit128, could not resolve github.com; no upload/branch creation. Remote approved-branch SHA is null, NOT the local SHA. The connector can read remote state, but its create_commit interface lacks original author/committer timestamps and cannot upload this exact local commit history. No alternate history/ref was synthesized as a substitute. Publication remains network-blocked, not successfully backed up.
+
+## Phases1–3 continuation from already validated HEAD
+
+Do not undo completed96e93a3: the current identity/raw Core adapters and exact post-commit read proofs already passed55 focused cases and817 backend tests/1 skipped (diagnostic cleanup). The current engine still has two commits/event with independently committed transitions, collector/financial records, context and opportunity writers between/after them. Migration0005 adds immutable context/reference receipts, not an event-wide transaction or foreign-key link between identity and raw records. OutcomeCollector and prospective on_record/persist_pending have distinct transaction ownership; routing just the initial two writes into one outer transaction does not route those intervening writes or roll back their memory.
+
+Added real-SQLite counterexample tests (not production paths):
+- An outer uncommitted identity INSERT causes an existing separate-Session negative-outcome write to hit SQLITE_BUSY; the outer identity rolls back. Test-only busy_timeout10, production5000 unchanged.
+- Moving identity reservation after a durable negative outcome permits the same outcome to be appended again after restart. The early-reservation control suppresses replay and retains exactly one negative outcome. This demonstrates why neither naïve merge is safe; it does not claim that an eventual fully staged unit-of-work is impossible.
+
+Relevant focused audit/boundary/current-writer tests:24 passed in6.01s. No production code, strategy/config, observers, SDK schema or freshness changes in this continuation.
+
+Evaluated driver-level bound SQL within existing transactions on project ext4,500 pairs ABBA: current CPU1.278/.903s vs candidate1.082/.839s, same1000 commits, almost identical commit wall time within each adjacent pair. Saving7–15% of a low-level subset is small/variable and dwarfed by observed whole-run I/O variation; it does not establish sustained50/s. Direct driver binds also require preserving explicit Float conversion/type behavior. Candidate remains an ignored diagnostic only; NOT adopted into production. Avoid another speculative micro-optimization while the two-commit floor and cross-component rollback problem remain.
+
+Next measurements use the SAME production source as7bdab30, fresh project-filesystem DBs, unchanged250 candidates/200 warm events/20s freshness/burst/recovery/cadence/durability. Reuse the predeclared120s40/50 driver and stop at first50/s failure; only three fully passing50s trials could qualify further review. Existing aligned no-growth guard (slope<=0 and late-three mean<=early-three after20s) stays fixed. All results, including failure, will be preserved;600s remains conditional and PRE_COHORT_READY remains NO.
