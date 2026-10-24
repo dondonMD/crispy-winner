@@ -1,7 +1,7 @@
 """Synthetic 250-candidate sustained consumer validation; no live network/cohort."""
 import argparse
 from contextlib import nullcontext, closing
-from collections import Counter
+from collections import Counter, deque
 import os
 import sqlite3
 import asyncio
@@ -127,10 +127,40 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
         with output.with_suffix(".profile.txt").open("x") as file:
             pstats.Stats(profiler, stream=file).sort_stats("cumulative").print_stats(30)
 
+        import backend.app.engine as engine_module
+        import backend.app.features as feature_module
+        from sqlalchemy import event as sql_event
+        sql_counts: Counter = Counter()
+        commit_samples: deque[float] = deque(maxlen=8192)
+        commit_totals = dict(count=0, seconds=0., maximum=0.)
+        original_commit = engine.db.engine.dialect.do_commit
+        def timed_commit(connection):
+            start = time.perf_counter()
+            try:
+                return original_commit(connection)
+            finally:
+                duration = time.perf_counter() - start
+                commit_samples.append(duration)
+                commit_totals["count"] += 1
+                commit_totals["seconds"] += duration
+                commit_totals["maximum"] = max(commit_totals["maximum"], duration)
+        setattr(engine.db.engine.dialect, "do_commit", timed_commit)
+        def sql_count(conn, cursor, statement, *args):
+            sql = statement.upper()
+            category = next((name for name in ("PRAGMA FREELIST_COUNT", "PRAGMA PAGE_SIZE",
+                "INSERT INTO EVENT_IDENTITIES", "INSERT INTO RECORDS", "SELECT EVENT_IDENTITIES")
+                if sql.startswith(name)), sql.split()[0])
+            sql_counts[category] += 1
+        sql_event.listen(engine.db.engine, "before_cursor_execute", sql_count)
         stages = {}
+        restore_wrappers = []
         for obj, name in ((engine, "analyse"), (engine.db, "add"), (engine.db, "reserve_event"),
                           (engine.intelligence, "refresh"), (engine.collector, "observe"),
-                          (engine.intelligence.research, "save_pending"), (engine, "checkpoint")):
+                          (engine.intelligence.research, "save_pending"), (engine, "checkpoint"),
+                          (engine.db, "writable"), (engine.db, "context_reference"),
+                          (engine.dedup, "accept"), (engine.intelligence, "observe"),
+                          (observer, "observe"), (engine_module, "calculate_features"),
+                          (feature_module, "window_features")):
             original = getattr(obj, name)
             key = type(obj).__name__ + "." + name
             stages[key] = dict(calls=0, seconds=0., maximum=0.)
@@ -146,6 +176,7 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
                     row["seconds"] += elapsed
                     row["maximum"] = max(row["maximum"], elapsed)
 
+            restore_wrappers.append((obj, name, original))
             setattr(obj, name, measured)
         admitted: dict[str, float] = {}
         queue_waits: list[float] = []
@@ -286,7 +317,12 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
                 task.cancel()
             await asyncio.gather(*inputs, return_exceptions=True)
             detach()
-            await engine.stop()
+            try:
+                await engine.stop()
+            finally:
+                for obj, name, original in reversed(restore_wrappers):
+                    setattr(obj, name, original)
+                setattr(engine.db.engine.dialect, "do_commit", original_commit)
         elapsed = time.perf_counter() - started
         cpu_seconds = sum(process.cpu_times()[:2]) - cpu_start
         shutdown_storage = storage_bytes(db_path)
@@ -308,7 +344,10 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
                 await restarted.stop()
             restart.update(elapsed_seconds=time.perf_counter() - restart_started,
                            storage_after_restart=storage_bytes(db_path))
-        result = dict(synthetic=True, endurance=endurance, storage_retained=endurance,
+        result = dict(synthetic=True, sql_counts=dict(sql_counts),
+            sqlite_commit=dict(**commit_totals, sample_limit=8192,
+                sampled_count=len(commit_samples), p50=percentile(commit_samples,.5),
+                p95=percentile(commit_samples,.95), p99=percentile(commit_samples,.99)), endurance=endurance, storage_retained=endurance,
             storage_after_shutdown=shutdown_storage, storage_budget_bytes=engine.db.budget,
             per_minute_application_age={str(k): dict(count=len(v), p50=percentile(v,.5),
                 p95=percentile(v,.95), p99=percentile(v,.99), maximum=max(v)) for k,v in by_minute.items()},
