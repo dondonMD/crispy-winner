@@ -1,6 +1,7 @@
 from collections import OrderedDict, deque, Counter
 from dataclasses import dataclass, field
 from enum import StrEnum
+from types import MappingProxyType
 import heapq
 import math
 import time
@@ -20,6 +21,19 @@ class State(StrEnum):
     COOLING = "COOLING"
     REJECTED = "REJECTED"
     EXPIRED = "EXPIRED"
+
+
+_STATE_PRIORITIES = MappingProxyType(
+    {
+        State.GRADUATING: 100,
+        State.GRADUATED: 100,
+        State.POST_GRAD_OBSERVATION: 95,
+        State.ENTRY_CANDIDATE: 100,
+        State.NEAR_GRADUATION: 90,
+        State.MATURING: 70,
+        State.WATCHING: 30,
+    }
+)
 
 
 TRANSITIONS = {
@@ -241,15 +255,7 @@ class Token:
 
     def priority(self):
         return (
-            {
-                State.GRADUATING: 100,
-                State.GRADUATED: 100,
-                State.POST_GRAD_OBSERVATION: 95,
-                State.ENTRY_CANDIDATE: 100,
-                State.NEAR_GRADUATION: 90,
-                State.MATURING: 70,
-                State.WATCHING: 30,
-            }.get(self.state, 0),
+            _STATE_PRIORITIES.get(self.state, 0),
             self.curve_progress if self.curve_progress is not None else -1,
             self.scores.get("maturity", 0),
             self.mint,

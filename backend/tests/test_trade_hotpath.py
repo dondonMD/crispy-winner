@@ -280,3 +280,30 @@ def test_cross_window_sharing_recomputes_all_horizon_dependent_fields(currency):
         actual = calculate_features(t, now)
         expected = {str(s): window_features(t.events, now, s, t.creator) for s in [10, 30, 60, 180, 300, 600]}
         assert actual == expected
+
+
+def test_priority_mapping_preserves_all_states_and_tie_breaks():
+    from backend.app.domain import State, _STATE_PRIORITIES
+
+    original = {
+        State.GRADUATING: 100,
+        State.GRADUATED: 100,
+        State.POST_GRAD_OBSERVATION: 95,
+        State.ENTRY_CANDIDATE: 100,
+        State.NEAR_GRADUATION: 90,
+        State.MATURING: 70,
+        State.WATCHING: 30,
+    }
+    rows = []
+    for state in State:
+        for curve in [None, 0, 80, 100]:
+            for maturity in [0, 42]:
+                t = Token(f"{state}-{curve}-{maturity}", "", "", 100, state=state)
+                t.curve_progress = curve
+                t.scores = {"maturity": maturity}
+                expected = (original.get(state, 0), curve if curve is not None else -1, maturity, t.mint)
+                assert t.priority() == expected
+                rows.append((t, expected))
+    assert sorted(rows, key=lambda r: r[0].priority()) == sorted(rows, key=lambda r: r[1])
+    with pytest.raises(TypeError):
+        _STATE_PRIORITIES[State.WATCHING] = 999
