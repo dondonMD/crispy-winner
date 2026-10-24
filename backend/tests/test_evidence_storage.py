@@ -34,6 +34,7 @@ def test_sustained_raw_writes_reclaim_only_expendable_data_and_record_censorship
     db.add("paper_account", {"cash": 20})
     for i in range(1000):
         db.add("event", {"index": i, "synthetic": "x" * 16000}, ts=i + 1)
+        assert db.size() < 8 * 1048576
     assert db.storage_audit["raw_omitted"] > 0
     assert db.storage_audit["raw_reclaimed"] > 0
     assert db.size() < 8 * 1048576

@@ -297,11 +297,11 @@ def attach_observer(engine, observer):
             observer.failed, observer.error = True, type(exc).__name__
         return result
 
-    def processed(event, now=None):
+    def processed(event, now=None, **kwargs):
         before = set(engine.tokens) if event.kind == "create" else set()
         pressure = getattr(engine, "metrics", {}).get("resource_pressure", False)
         full = len(before) >= observer.settings.max_candidates if hasattr(observer, "settings") else False
-        result = process(event, now)
+        result = process(event, now, **kwargs)
         if event.kind == "create" and hasattr(observer, "coverage"):
             try:
                 censored = observer.coverage.admission(before, engine.tokens, pressure, full, result)

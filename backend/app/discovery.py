@@ -192,6 +192,8 @@ class OnchainPumpDiscovery:
             "diagnostic_discriminators": {name: key.hex() for key, name in EVENTS.items()},
             "trade_events": 0, "tracked_trades": 0, "untracked_trades": 0,
             "duplicate_trades": 0, "invalid_unit_trades": 0,
+            "unit_failure_reasons": dict.fromkeys(("curve_not_verified", "unsupported_quote",
+                "identity_conflict", "unverified_quote_semantics", "zero_executed_amount"), 0),
             "last_disconnect": 0, "reconnected_at": 0, "last_decode_gap": 0,
             "outage_trade_loss": "UNKNOWN — no backfill",
             "enabled": bool(self.url),
@@ -382,16 +384,23 @@ class OnchainPumpDiscovery:
                         and fields["ix_name"] in ("buy", "sell", "buy_exact_sol_in")
                         and fields["quote_amount"] == 0
                     )
+                    unit_reason = "unsupported_quote"
                     if account_sol:
                         quote = account_quote
                     elif account_quote and quote != account_quote:
+                        unit_reason = "identity_conflict"
                         quote = ""  # Conflicting canonical account/event identities fail closed.
                     currency, decimals = {
                         "So11111111111111111111111111111111111111112": ("SOL", 9),
                         "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": ("USDC", 6),
                     }.get(quote, ("unknown", 0))
                     amount = fields["sol_amount"] if legacy_sol else fields["quote_amount"]
+                    if quote == str(Pubkey.default()) and not account_quote:
+                        unit_reason = "curve_not_verified"
+                    if currency != "unknown" and not amount:
+                        unit_reason = "unverified_quote_semantics" if account_sol and not legacy_sol else "zero_executed_amount"
                     if currency == "unknown" or not amount:
+                        self.health["unit_failure_reasons"][unit_reason] += 1
                         currency, amount = "unknown", 0
                         self.health["invalid_unit_trades"] += 1
                     event = MarketEvent(

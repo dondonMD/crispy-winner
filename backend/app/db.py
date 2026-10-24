@@ -142,7 +142,14 @@ class Database:
         # This bounded delete reuses SQLite pages, rather than requiring VACUUM.
         with self.sessions.begin() as db:
             ids = select(Record.id).where(Record.kind == "event").order_by(Record.id).limit(256)
-            selected = list(db.execute(select(Record.id, Record.ts).where(Record.id.in_(ids))))
+            candidates = list(db.execute(select(Record.id, Record.ts, Record.payload).where(Record.id.in_(ids))))
+            selected: list[Any] = []
+            reclaimed_bytes = 0
+            for row in candidates:
+                if selected and reclaimed_bytes + len(row.payload.encode()) > 65536:
+                    break
+                selected.append(row)
+                reclaimed_bytes += len(row.payload.encode())
             if selected:
                 first, last = min(row.ts for row in selected), max(row.ts for row in selected)
                 self.storage_audit["reclaimed_first_ts"] = min(

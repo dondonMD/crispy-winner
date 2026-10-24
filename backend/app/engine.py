@@ -98,7 +98,7 @@ class RadarEngine:
         self.last_handoff_sample = 0.0
         self.trade_observations = {"buy": 0, "sell": 0}
         self.trade_continuity: dict[str, Any] = {"global_resets": 0, "per_token_resets": 0,
-                                 "per_token_reasons": dict.fromkeys(("decode", "stale", "queue", "buffer", "recovery", "processing"), 0)}
+                                 "per_token_reasons": dict.fromkeys(("decode", "stale", "queue", "buffer", "recovery", "processing", "resource"), 0)}
         self.out_of_order = 0
         self.duplicates = 0
         self.rejected_payloads = 0
@@ -1076,6 +1076,29 @@ class RadarEngine:
         })
         self.last_cohort_quality = now
 
+    def trim_for_resource_pressure(self, token, now):
+        lost = False
+        while len(token.events) > 100:
+            removed = token.events.popleft()
+            lost |= removed.kind == "trade" and 0 <= now - removed.ts < 180
+        token.degraded = True
+        if lost:
+            self.invalidate_token_trade_coverage(token.mint, reason="resource", now=now)
+
+    def observation_tick(self, now):
+        previous = self.accounting.last_tick
+        gap = now - previous
+        self.accounting.largest_tick_gap = max(self.accounting.largest_tick_gap, gap)
+        if gap > self.settings.max_data_age_seconds or gap < 0:
+            self.accounting.observation_gaps += 1
+            self.accounting.gaps.append(dict(start=previous, end=now,
+                reason="clock_backwards" if gap < 0 else "observation_pause"))
+            self.invalidate_trade_coverage()
+            for token in self.tokens.values():
+                if token.flow_venue == "PUMPSWAP":
+                    self.invalidate_postgrad_coverage(token.mint, now=now)
+        self.accounting.last_tick = now
+
     async def run_loop(self):
         while True:
             try:
@@ -1085,12 +1108,7 @@ class RadarEngine:
                     if mint in self.tokens:
                         self.tokens[mint].degraded = True
                 self.queue.sample_depth(now)
-                tick_gap = now - self.accounting.last_tick
-                self.accounting.largest_tick_gap = max(self.accounting.largest_tick_gap, tick_gap)
-                if tick_gap > self.settings.max_data_age_seconds or tick_gap < 0:
-                    self.accounting.observation_gaps += 1
-                    self.invalidate_trade_coverage()
-                self.accounting.last_tick = now
+                self.observation_tick(now)
                 await self.drain_events()
                 now = time.time()
                 for token in list(self.tokens.values()):
@@ -1111,9 +1129,7 @@ class RadarEngine:
                 if self.metrics["resource_pressure"]:
                     self.alert("SYSTEM", "", "RESOURCE PRESSURE — reducing monitoring", now)
                     for token in self.tokens.values():
-                        while len(token.events) > 100:
-                            token.events.popleft()
-                        token.degraded = True
+                        self.trim_for_resource_pressure(token, now)
                 if self.lab_task is not None and self.lab_task.done():
                     self.lab = self.lab_task.result()
                     self.lab_task = None
@@ -1397,6 +1413,16 @@ class RadarEngine:
                 and 0 <= now - token.last_trade <= self.settings.max_data_age_seconds):
             return "CURRENT"
         return "PARTIAL"
+
+    def trade_evidence_blockers(self, token, now):
+        f = token.features.get("180", {})
+        return dict(no_samples=not f.get("samples"), unknown_or_mixed_units=not f.get("units_valid"),
+                    insufficient_samples=f.get("samples", 0) < 3,
+                    incomplete_window=not f.get("continuity_valid"),
+                    transport_or_pool_unavailable=(not self.pumpswap.coverage(token.mint, now)
+                        if token.flow_venue == "PUMPSWAP" else not self.onchain.health["connected"]),
+                    stale_trade=not (0 <= now - token.last_trade <= self.settings.max_data_age_seconds),
+                    pending_recovery=(token.flow_venue != "PUMPSWAP" and self.recovery.overlaps(token, now)))
 
     def trade_evidence_available(self):
         return self.settings.mode == "DEMO" or self.settings.trade_stream_enabled or self.onchain.health["enabled"]

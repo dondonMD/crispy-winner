@@ -90,6 +90,8 @@ class PriorityBuffer:
         self.arrivals: dict[int, float] = {}
         self.peak_depth = 0
         self.accepted_trades = 0
+        self.wait_edges = (.001, .01, .05, .1, .5, 1, 2, 5, 10, 20)
+        self.wait_counts = [0] * 11
         self.stale_while_queued = 0
         self.trades_stale_while_queued = 0
         self.depth_samples: deque[dict] = deque(maxlen=300)
@@ -130,7 +132,8 @@ class PriorityBuffer:
 
     def snapshot(self, now=None):
         now = time.time() if now is None else now
-        return {"peak_depth": self.peak_depth,
+        return {"queue_wait_upper_edges": list(self.wait_edges) + ["INF"],
+                "queue_wait_counts": list(self.wait_counts), "peak_depth": self.peak_depth,
                 "oldest_event_age": max((now - item[2].ts for item in self.heap), default=0),
                 "oldest_trade_age": max((now - item[2].ts for item in self.heap if item[2].kind == "trade"), default=0),
                 "oldest_queue_wait": max((now - at for at in self.arrivals.values()), default=0),
@@ -162,6 +165,7 @@ class PriorityBuffer:
         for _, sequence, event in selected:
             self.in_processing[event.kind] += 1
             arrived = self.arrivals.pop(sequence, now)
+            self.wait_counts[sum(now - arrived > edge for edge in self.wait_edges)] += 1
             if abs(arrived - event.ts) <= max_age < now - event.ts:
                 self.stale_while_queued += 1
                 self.trades_stale_while_queued += event.kind == "trade"

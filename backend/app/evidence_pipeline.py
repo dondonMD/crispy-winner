@@ -1,6 +1,6 @@
 """Bounded operational accounting; never supplies strategy or trade evidence."""
 
-from collections import Counter
+from collections import Counter, deque
 import time
 
 
@@ -11,6 +11,7 @@ class EventAccounting:
         self.process_seconds = 0.0
         self.process_max_seconds = 0.0
         self.last_tick = time.time()
+        self.gaps: deque[dict] = deque(maxlen=64)
         self.observation_gaps = 0
         self.largest_tick_gap = 0.0
 
@@ -38,4 +39,5 @@ class EventAccounting:
             )
         return dict(events=rows, process_seconds=self.process_seconds,
                     process_max_seconds=self.process_max_seconds,
-                    observation_gaps=self.observation_gaps, largest_tick_gap=self.largest_tick_gap)
+                    observation_gaps=self.observation_gaps, gaps=list(self.gaps),
+                    largest_tick_gap=self.largest_tick_gap)

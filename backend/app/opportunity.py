@@ -1,6 +1,7 @@
 """Pure unvalidated attention ranking. Never supplies core entry or paper evidence."""
 
 from enum import StrEnum
+from functools import lru_cache
 import hashlib
 import json
 import math
@@ -49,13 +50,17 @@ class IntelligenceSettings(BaseModel):
         )
 
 
+@lru_cache(maxsize=8)
+def _parse_intelligence_settings(content):
+    return IntelligenceSettings(**(yaml.safe_load(content) or {}))
+
+
 def load_intelligence_settings(path: Path | None = None):
     path = path or ROOT / "config/intelligence.yaml"
-    return (
-        IntelligenceSettings(**(yaml.safe_load(path.read_text()) or {}))
-        if path.exists()
-        else IntelligenceSettings()
-    )
+    # Read every time so source/config drift is never hidden by a stat/TTL cache.
+    # Copies prevent one caller from mutating another caller's frozen settings.
+    content = path.read_text() if path.exists() else ""
+    return _parse_intelligence_settings(content).model_copy(deep=True)
 
 
 class OpportunityAction(StrEnum):

@@ -93,7 +93,7 @@ class DryObserver:
         pass  # No lifecycle/candidate mutation or research enrollment.
 
 
-async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=None, frozen=None):
+async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=None, frozen=None, run_directory=None):
     from backend.app.engine import RadarEngine
     import os
 
@@ -112,7 +112,13 @@ async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=
         plan = json.loads(Path(frozen).read_text())
         if plan.get("collectable") is not False or plan["identity"] != identity(settings):
             raise ValueError("Frozen clean diagnostic identity mismatch")
-    with tempfile.TemporaryDirectory(prefix="early-edge-throughput-") as temp:
+    from contextlib import nullcontext
+
+    if run_directory is not None:
+        Path(run_directory).mkdir(parents=True, exist_ok=False)
+    directory_context = (nullcontext(str(run_directory)) if run_directory is not None else
+                         tempfile.TemporaryDirectory(prefix="early-edge-throughput-"))
+    with directory_context as temp:
         engine = RadarEngine(settings, Path(temp) / "diagnostic-engine.db")
         trade_diagnostic = TradeDiagnostics(engine.onchain.submit)
         engine.onchain.submit = trade_diagnostic
@@ -130,6 +136,8 @@ async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=
         observer.telemetry = telemetry
         untrack = track_http_errors(engine.rpc.client, telemetry.rpc_errors)
         clean_shutdown = False
+        stop_reason = None
+        previous_tick = time.time()
         drift = False
         last_check = 0.0
         quote_venues: Counter[str] = Counter()
@@ -230,6 +238,13 @@ async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=
                                     notional="Diagnostic raw quote budget only; no USD fill claim",
                                 )
                             )
+                        except asyncio.CancelledError:
+                            quote_venues[venue + ":unavailable"] += 1
+                            records.append(dict(venue=venue, mint=mint, pool=pool, match=False,
+                                attempt_started_at=quote_started, completed_at=time.time(),
+                                round_number=round_number, error_category="CANCELLED",
+                                unavailable_reason="UNAVAILABLE_INFRASTRUCTURE"))
+                            raise
                         except Exception as exc:
                             quote_venues[venue + ":unavailable"] += 1
                             telemetry.add("quote_unavailable_delay", time.time() - quote_started)
@@ -262,8 +277,15 @@ async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=
             reference_task = asyncio.create_task(refresh_reference(reference, reference_stop))
             deadline = time.monotonic() + seconds
             while time.monotonic() < deadline:
+                if (time.time() - previous_tick > settings.max_data_age_seconds
+                        or time.time() < previous_tick):
+                    telemetry.counts["observation_discontinuity_stop"] += 1
+                    stop_reason = "OBSERVATION_DISCONTINUITY"
+                    break
+                previous_tick = time.time()
                 if not engine.running or any(task.done() for task in workers):
                     telemetry.counts["operational_stop"] += 1
+                    stop_reason = "STORAGE_STOP" if engine.storage_stopped else "WORKER_STOP"
                     break
                 if observer.failed:
                     raise RuntimeError("Diagnostic observation failure")
@@ -329,7 +351,7 @@ async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=
                     if len(quality) > 2881:
                         quality.pop(0)
                 await asyncio.sleep(0.5)
-            clean_shutdown = engine.running
+            clean_shutdown = engine.running and stop_reason is None
         finally:
             scheduler_stop.set()
             for worker in workers:
@@ -375,12 +397,18 @@ async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=
             quote_consistency=dict(oracle.diagnostics),
             clean_shutdown=clean_shutdown,
             source_config_drift=drift,
+            operational_stop_reason=stop_reason,
+            trade_evidence_blocker_counts=dict(Counter(
+                reason for token in engine.tokens.values()
+                for reason, blocked in engine.trade_evidence_blockers(token, time.time()).items() if blocked)),
             manifest_proposal_hash=digest(plan),
             expiry=dict(engine.expiry_metrics),
             continuity=dict(engine.trade_continuity),
             evidence_pipeline=engine.accounting.snapshot(engine.queue),
             storage_audit=dict(engine.db.storage_audit),
             storage_stopped=engine.storage_stopped,
+            database_retained=run_directory is not None,
+            database_path=str(Path(temp) / "diagnostic-engine.db") if run_directory is not None else None,
             queue_drops=dict(trade=engine.queue.dropped_trades, critical=engine.queue.dropped_critical),
             live_readonly=True,
             collectable_cohort_constructed=False,
@@ -472,6 +500,7 @@ def build_parser():
     p.add_argument("--max-state-samples", type=int, default=12)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--progress", type=Path)
+    p.add_argument("--run-directory", type=Path, help="New durable diagnostic directory; defaults beside output")
     p.add_argument("--frozen-plan", type=Path)
     return p
 
@@ -491,7 +520,8 @@ def main():
     if any(len(x) != 2 for x in pools) or len(pools) > 4:
         p.error("At most four mint:pool inputs")
     r = asyncio.run(
-        diagnostic(settings, a.seconds, a.node_path, pools, a.max_state_samples, a.progress, a.frozen_plan)
+        diagnostic(settings, a.seconds, a.node_path, pools, a.max_state_samples, a.progress, a.frozen_plan,
+                   a.run_directory or a.output.with_suffix(".run"))
     )
     a.output.parent.mkdir(parents=True, exist_ok=True)
     with a.output.open("x") as f:
