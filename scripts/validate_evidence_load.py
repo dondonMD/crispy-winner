@@ -58,7 +58,23 @@ def seal_report(result):
     return normalized
 
 
-async def validate(seconds, rate, recovery_rate, warm_events, output, profile_runtime=False, endurance=False):
+def install_shutdown_watchdog(loop, interval=.05, ticks=100):
+    """Bounded timer service during REAL Runner cleanup; never marks a worker done.
+
+    Some restricted runtimes fail to wake select on executor-join callbacks. Timers
+    keep the loop progressing, but a genuinely stuck worker still blocks/fails.
+    Activated only after validation, so it cannot influence measured ingestion.
+    """
+    state = dict(ticks=0, maximum_ticks=ticks, interval_seconds=interval)
+    def wake():
+        state["ticks"] += 1
+        if state["ticks"] < ticks and not loop.is_closed():
+            loop.call_later(interval, wake)
+    loop.call_later(interval, wake)
+    return state
+
+
+async def validate(seconds, rate, recovery_rate, warm_events, output, profile_runtime=False, endurance=False, cleanup_state=None):
     # scripts/profile.py must not shadow Python's profiling module in CLI mode.
     script_directory = str(Path(__file__).resolve().parent)
     if script_directory in sys.path:
@@ -372,6 +388,9 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
         result = seal_report(result)
         with output.open("x") as file:
             json.dump(result, file, indent=2)
+        watchdog = install_shutdown_watchdog(asyncio.get_running_loop())
+        if cleanup_state is not None:
+            cleanup_state["watchdog"] = watchdog
         return result
 
 
@@ -388,6 +407,30 @@ if __name__ == "__main__":
     if not (1 <= args.seconds <= (1800 if args.endurance else 600) and 1 <= args.rate <= 100 and 0 <= args.recovery_rate <= 2
             and 0 <= args.warm_events <= 500):
         parser.error("Bounded synthetic load required")
-    report = asyncio.run(validate(args.seconds, args.rate, args.recovery_rate, args.warm_events, args.output, args.profile_runtime, args.endurance))
+    import threading
+    status_path = args.output.with_suffix(".process-status.json")
+    if status_path.exists():
+        parser.error("Process status already exists")
+    cleanup: dict[str, Any] = {}
+    cli_started = time.perf_counter()
+    async def run_cli():
+        try:
+            return await validate(args.seconds, args.rate, args.recovery_rate, args.warm_events,
+                                  args.output, args.profile_runtime, args.endurance, cleanup_state=cleanup)
+        finally:
+            cleanup["validation_returned_at"] = time.perf_counter()
+            if "watchdog" not in cleanup:
+                cleanup["watchdog"] = install_shutdown_watchdog(asyncio.get_running_loop())
+    report = asyncio.run(run_cli())  # Still awaits/cancels tasks, asyncgens, and executor shutdown.
+    remaining = [t.name for t in threading.enumerate() if t is not threading.main_thread()]
+    status = dict(synthetic=True, runner_returned=True, remaining_thread_count=len(remaining),
+                  clean_exit=len(remaining) == 0, watchdog=cleanup["watchdog"],
+                  total_seconds=time.perf_counter() - cli_started,
+                  cleanup_seconds=time.perf_counter() - cleanup["validation_returned_at"],
+                  report_sha256=hashlib.sha256(args.output.read_bytes()).hexdigest())
+    with status_path.open("x") as file:
+        json.dump(status, file, indent=2)
+    if remaining:
+        raise RuntimeError("Diagnostic executor threads remain after Runner cleanup")
     print(json.dumps({k: report[k] for k in ("source_sha", "elapsed_seconds", "processed_trades",
                      "peak_rss_mb", "mean_cpu", "trade_application_age")}, indent=2))
