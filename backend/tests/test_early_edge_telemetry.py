@@ -26,7 +26,7 @@ def test_no_early_no_latency_fabrication_and_bounded_signals():
     assert len(t.signals) == 64 and t.counts["diagnostic_probe_capacity"] == 1
     for mint, row in list(t.signals.items()):
         t.finish_signal(mint, row, 110)
-    assert t.entry_counts["10:UNAVAILABLE_PROVIDER_GAP"] == 64
+    assert t.entry_counts["10:UNAVAILABLE_INFRASTRUCTURE"] == 64
     assert t.report()["cohort_created"] is False
 
 

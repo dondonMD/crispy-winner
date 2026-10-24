@@ -1,6 +1,7 @@
 """Bounded operational telemetry only; no cohort, outcome, execution or scoring writes."""
 
-from collections import Counter
+from collections import Counter, deque
+import asyncio
 import hashlib
 import math
 import time
@@ -50,6 +51,7 @@ class OperationalTelemetry:
         self.finished = []  # <=256 redacted marker summaries.
         self.entry_counts: Counter[str] = Counter()
         self.rpc_errors: Counter[str] = Counter()
+        self.entry_attempts: deque[dict] = deque(maxlen=256)
         self.last_quote_probe = 0.0
         self.last_state_counts = {}
         self.reference_quality: Counter[str] = Counter()
@@ -157,8 +159,9 @@ class OperationalTelemetry:
     def finish_signal(self, mint, row, now):
         for latency in (0.5, 2, 5, 10):
             if str(latency) not in row["latencies"]:
-                row["latencies"][str(latency)] = "UNAVAILABLE_PROVIDER_GAP"
-                self.entry_counts[f"{latency}:UNAVAILABLE_PROVIDER_GAP"] += 1
+                reason = row.get("failure", "UNAVAILABLE_INFRASTRUCTURE")
+                row["latencies"][str(latency)] = reason
+                self.entry_counts[f"{latency}:{reason}"] += 1
         if len(self.finished) < 256:
             self.finished.append(
                 dict(
@@ -171,42 +174,82 @@ class OperationalTelemetry:
             )
         self.signals.pop(mint, None)
 
+    def entry_pending(self, now):
+        # Background work yields while any primary manual-entry window is live.
+        return any("10" not in row["latencies"] and now <= row["ts"] + 20
+                   for row in self.signals.values())
+
+    def entry_unavailable(self, row, latency, reason):
+        key = str(latency)
+        if key not in row["latencies"]:
+            row["latencies"][key] = reason
+            self.entry_counts[f"{key}:{reason}"] += 1
+
     async def probe_entries(self, oracle, reference, engine, now):
-        if now - self.last_quote_probe < 2:
-            return
+        choices = []
         for mint, row in list(self.signals.items()):
-            due = [v for v in (0.5, 2, 5, 10) if str(v) not in row["latencies"] and now >= row["ts"] + v]
-            if not due:
-                continue
-            self.last_quote_probe = now
+            attempts = row.setdefault("attempts", {})
+            for latency in (0.5, 2, 5, 10):
+                if str(latency) not in row["latencies"] and now > row["ts"] + latency + 10:
+                    self.entry_unavailable(row, latency, row.get("failure", "UNAVAILABLE_INFRASTRUCTURE"))
+            due = [v for v in (0.5, 2, 5, 10) if str(v) not in row["latencies"]
+                   and row["ts"] + v <= now and attempts.get(str(v), 0) < 3]
+            if due and now - row.get("last_attempt", 0) >= 2:
+                primary = 10 in due
+                deadline = row["ts"] + (10 if primary else min(due)) + 10
+                choices.append((not primary, deadline, row.get("last_attempt", 0), mint, due))
+        if not choices:
+            return
+        _, deadline, _, mint, due = min(choices)
+        row = self.signals[mint]
+        row["last_attempt"] = now
+        for latency in due:
+            row["attempts"][str(latency)] = row["attempts"].get(str(latency), 0) + 1
+        receipt = dict(signal=hashlib.sha256(mint.encode()).hexdigest()[:12],
+                       signal_at=row["ts"], attempted_at=now, deadline=deadline,
+                       latencies=due, outcome="UNAVAILABLE_INFRASTRUCTURE")
+        self.entry_attempts.append(receipt)
+        self.counts["entry_quote_attempts"] += 1
+        try:
             token = engine.tokens.get(mint)
-            try:
-                if token is None or token.graduation is not None:
-                    raise ValueError("UNAVAILABLE_QUOTE")
-                obs = await oracle.observe(mint, "PUMP")
-                self.add("entry_state_acquisition_delay", obs.acquired_at - obs.requested_at)
-                fx = fx_value(reference.snapshot(), obs.data["quote_mint"], obs.acquired_at)
-                pump_buy(obs.data, quote_budget(4, fx, obs.data["quote_mint"]))
-                for v in (0.5, 2, 5, 10):
-                    key = str(v)
-                    if (
-                        key not in row["latencies"]
-                        and row["ts"] + v <= obs.requested_at <= obs.acquired_at <= row["ts"] + v + 10
-                    ):
-                        row["latencies"][key] = "AVAILABLE"
-                        self.entry_counts[f"{v}:AVAILABLE"] += 1
-            except Exception as exc:
-                self.counts["entry_quote_errors"] += 1
-                self.counts["entry_" + ("QUOTE" if isinstance(exc, ValueError) else "PROVIDER")] += 1
-            for v in due:
-                key = str(v)
-                if key not in row["latencies"] and time.time() > row["ts"] + v + 10:
-                    row["latencies"][key] = "UNAVAILABLE_PROVIDER_GAP"
-                    self.entry_counts[f"{v}:UNAVAILABLE_PROVIDER_GAP"] += 1
-            break
+            if token is None or token.graduation is not None:
+                raise ValueError("UNAVAILABLE_QUOTE")
+            # A single entry worker and one background worker share the normal RPC limiter.
+            obs = await asyncio.wait_for(oracle.observe(mint, "PUMP"), timeout=min(5, deadline - now))
+            self.add("entry_state_acquisition_delay", obs.acquired_at - obs.requested_at)
+            receipt.update(requested_at=obs.requested_at, acquired_at=obs.acquired_at)
+            fx = fx_value(reference.snapshot(), obs.data["quote_mint"], obs.acquired_at)
+            pump_buy(obs.data, quote_budget(4, fx, obs.data["quote_mint"]))
+            receipt["outcome"] = "VALID_STATE"
+            for latency in (0.5, 2, 5, 10):
+                key = str(latency)
+                if (key not in row["latencies"] and row["ts"] + latency <= obs.requested_at
+                        <= obs.acquired_at <= row["ts"] + latency + 10):
+                    row["latencies"][key] = "AVAILABLE"
+                    self.entry_counts[f"{key}:AVAILABLE"] += 1
+        except asyncio.CancelledError:
+            row["failure"] = "UNAVAILABLE_INFRASTRUCTURE"
+            receipt["outcome"] = row["failure"]
+            raise
+        except Exception as exc:
+            self.counts["entry_quote_errors"] += 1
+            self.counts["entry_" + ("QUOTE" if isinstance(exc, ValueError) else "PROVIDER")] += 1
+            reason = getattr(exc, "reason", "UNAVAILABLE_QUOTE" if isinstance(exc, ValueError)
+                             else "UNAVAILABLE_PROVIDER_GAP")
+            allowed = ("UNAVAILABLE_QUOTE", "UNAVAILABLE_UNITS", "UNAVAILABLE_PROVIDER_GAP",
+                       "UNAVAILABLE_INFRASTRUCTURE", "UNAVAILABLE_OTHER")
+            row["failure"] = reason if reason in allowed else "UNAVAILABLE_OTHER"
+            receipt["outcome"] = row["failure"]
+        finally:
+            receipt["completed_at"] = time.time()
+            self.counts["entry_attempt_" + receipt["outcome"]] += 1
+        for latency in due:
+            if time.time() > row["ts"] + latency + 10 or row["attempts"][str(latency)] >= 3:
+                self.entry_unavailable(row, latency, row.get("failure", "UNAVAILABLE_PROVIDER_GAP"))
 
     def report(self):
         return dict(
+            entry_attempts=list(self.entry_attempts),
             counts=dict(self.counts),
             distributions={k: v.report() for k, v in self.distributions.items()},
             current_unique=len(self.current_seen),

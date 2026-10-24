@@ -141,33 +141,26 @@ async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=
 
         process = psutil.Process()
         process.cpu_percent()
+        from backend.app.early_edge_scheduling import SamplerBudget, quote_success
+
+        sample_budget = SamplerBudget(started, seconds, max_samples)
+        workers = []
+        scheduler_stop = asyncio.Event()
         next_probe = 0.0
         current_round = -1
         round_start_index = 0
         round_interval = max(180, seconds / max(1, max_samples // 12))
         quality: list[dict] = []
-        try:
-            await engine.start()
-            reference_task = asyncio.create_task(refresh_reference(reference, reference_stop))
-            deadline = time.monotonic() + seconds
-            while time.monotonic() < deadline:
-                if observer.failed:
-                    raise RuntimeError("Diagnostic observation failure")
+        async def sample_states():
+            nonlocal current_round, round_start_index, next_probe
+            while not scheduler_stop.is_set():
                 now = time.time()
-                if frozen and now - last_check >= 30:
-                    from backend.app.early_edge import identity
-
-                    drift = identity(settings) != plan["identity"]
-                    last_check = now
-                    if drift:
-                        raise ValueError("Frozen source/config drift")
-                await telemetry.probe_entries(oracle, reference, engine, now)
                 round_number = int((now - started) // round_interval)
                 if round_number != current_round:
                     current_round = round_number
                     attempted.clear()
                     round_start_index = len(records)
-                if len(records) < max_samples and now >= next_probe:
+                if sample_budget.available(now) and now >= next_probe and not telemetry.entry_pending(now):
                     choices = []
                     for mint, pool in pools:
                         if attempted[("PUMPSWAP", mint)] < 3:
@@ -184,13 +177,14 @@ async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=
                     chosen_mints = {
                         r["mint"]
                         for r in records[round_start_index:]
-                        if r["venue"] == "PUMP" and r.get("match")
+                        if r["venue"] == "PUMP" and quote_success(r)
                     }
                     choices = [
                         c for c in choices if c[1] != "PUMP" or c[2] in chosen_mints or len(chosen_mints) < 2
                     ]
                     if choices:
                         _, venue, mint, pool = sorted(choices, key=lambda c: (c[1] != "PUMPSWAP", c[2]))[0]
+                        assert sample_budget.claim(now)
                         attempted[(venue, mint)] += 1
                         # Probe helper minimum 2 is for full diagnostics; a single scheduled state here.
                         quote_venues[venue + ":attempts"] += 1
@@ -224,6 +218,9 @@ async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=
                                     slot=obs.slot,
                                     commitment=obs.commitment,
                                     acquired_at=obs.acquired_at,
+                                    attempt_started_at=quote_started,
+                                    completed_at=time.time(),
+                                    round_number=round_number,
                                     usd_reference_valid=usd_valid,
                                     quote_mint=obs.data["quote_mint"],
                                     usd_reference=reference.snapshot().get(obs.data["quote_mint"]),
@@ -244,10 +241,40 @@ async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=
                                     pool=pool,
                                     match=False,
                                     error_category=type(exc).__name__,
+                                    attempt_started_at=quote_started,
+                                    completed_at=time.time(),
+                                    round_number=round_number,
                                     unavailable_reason=getattr(exc, "reason", None),
                                 )
                             )
                         next_probe = time.time() + 5
+                await asyncio.sleep(0.25)
+
+        async def entry_probes():
+            while not scheduler_stop.is_set():
+                await telemetry.probe_entries(oracle, reference, engine, time.time())
+                await asyncio.sleep(0.1)
+
+        try:
+            await engine.start()
+            workers = [asyncio.create_task(sample_states(), name="diagnostic-sampler"),
+                       asyncio.create_task(entry_probes(), name="diagnostic-entry-probes")]
+            reference_task = asyncio.create_task(refresh_reference(reference, reference_stop))
+            deadline = time.monotonic() + seconds
+            while time.monotonic() < deadline:
+                if not engine.running or any(task.done() for task in workers):
+                    telemetry.counts["operational_stop"] += 1
+                    break
+                if observer.failed:
+                    raise RuntimeError("Diagnostic observation failure")
+                now = time.time()
+                if frozen and now - last_check >= 30:
+                    from backend.app.early_edge import identity
+
+                    drift = identity(settings) != plan["identity"]
+                    last_check = now
+                    if drift:
+                        raise ValueError("Frozen source/config drift")
                 rss = process.memory_info().rss / 1024**2
                 cpu = process.cpu_percent()
                 peak_rss = max(peak_rss, rss)
@@ -302,8 +329,12 @@ async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=
                     if len(quality) > 2881:
                         quality.pop(0)
                 await asyncio.sleep(0.5)
-            clean_shutdown = True
+            clean_shutdown = engine.running
         finally:
+            scheduler_stop.set()
+            for worker in workers:
+                worker.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
             detach()
             reference_stop.set()
             if reference_task:
@@ -347,6 +378,9 @@ async def diagnostic(settings, seconds, node_path, pools, max_samples, progress=
             manifest_proposal_hash=digest(plan),
             expiry=dict(engine.expiry_metrics),
             continuity=dict(engine.trade_continuity),
+            evidence_pipeline=engine.accounting.snapshot(engine.queue),
+            storage_audit=dict(engine.db.storage_audit),
+            storage_stopped=engine.storage_stopped,
             queue_drops=dict(trade=engine.queue.dropped_trades, critical=engine.queue.dropped_critical),
             live_readonly=True,
             collectable_cohort_constructed=False,
