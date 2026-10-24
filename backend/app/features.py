@@ -93,13 +93,53 @@ def window_features(events, now, seconds, creator=""):
     }
 
 
+def cached_window_features(events, now, seconds, creator, cache):
+    # Membership is ALWAYS rebuilt using the exact inclusive freshness boundaries.
+    # Cache only time-independent math; never evidence continuity, age or decisions.
+    trades = [e for e in events if e.kind == "trade" and 0 <= now - e.ts <= seconds]
+    priced = [e.price for e in events if e.price is not None and 0 <= now - e.ts <= seconds]
+    key = (seconds, creator,
+           tuple((e.ts, e.side, e.wallet, e.volume, e.currency, e.price) for e in trades), tuple(priced))
+    if cache.get("key") != key:
+        value = window_features(events, now, seconds, creator)
+        cache.update(key=key, value=value)
+    else:
+        value = dict(cache["value"])
+        recent = sum(e.volume if e.side == "buy" else -e.volume
+                     for e in trades if now - e.ts <= seconds / 2)
+        previous = sum(e.volume if e.side == "buy" else -e.volume
+                       for e in trades if now - e.ts > seconds / 2)
+        bins: list[list[float]] = [[] for _ in range(6)]
+        boundaries = [i * seconds / 6 for i in range(7)]
+        for e in trades:
+            index = bisect_right(boundaries, now - e.ts) - 1
+            if 0 <= index < 6:
+                bins[index].append(e.volume if e.side == "buy" else -e.volume)
+        totals = [sum(v) for v in bins]
+        value.update(
+            flow_acceleration=recent - previous if value["units_valid"] else None,
+            trade_acceleration=(sum(now - e.ts <= seconds / 2 for e in trades) * 2 - len(trades))
+                               / (seconds / 2),
+            buy_pressure_persistence=sum(v > 0 for v in totals) / 6,
+            sell_pressure_persistence=sum(v < 0 for v in totals) / 6,
+        )
+    # Continuity enrichment and callers may mutate results. Never expose the cached dict/list.
+    return {**value, "cluster_evidence": list(value["cluster_evidence"])}
+
+
 def calculate_features(token, now):
     events = token.events
     if token.flow_venue == "PUMPSWAP":
         events = [e for e in events if e.kind != "trade" or (
             e.source == "PumpSwap WSS" and e.evidence.get("venue") == "PUMPSWAP"
             and e.ts >= token.flow_epoch)]
-    return {str(s): window_features(events, now, s, token.creator) for s in [10, 30, 60, 180, 300, 600]}
+    cache = getattr(token, "_feature_window_cache", None)
+    if cache is None:
+        cache = {}
+        setattr(token, "_feature_window_cache", cache)
+    # Six private slots per bounded active token; not serialized into snapshots or research.
+    return {str(s): cached_window_features(events, now, s, token.creator, cache.setdefault(s, {}))
+            for s in [10, 30, 60, 180, 300, 600]}
 
 
 def score_token(token, now):

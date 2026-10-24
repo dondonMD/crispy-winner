@@ -1,6 +1,7 @@
 import json
 import time
 import hashlib
+from contextlib import nullcontext
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any
@@ -72,6 +73,7 @@ class Database:
         self.path = path
         self.record_observer: Any = None
         self.budget = 0
+        self.page_size = 0
         self.context_cache: OrderedDict[str, None] = OrderedDict()
         self.storage_audit: dict[str, Any] = dict(raw_omitted=0, raw_reclaimed=0,
                                                 raw_first_ts=None, raw_last_ts=None)
@@ -100,6 +102,7 @@ class Database:
                 self.storage_audit.update(json.loads(receipt.payload))
         with self.engine.connect() as db:
             page: int = db.exec_driver_sql("PRAGMA page_size").scalar_one()
+            self.page_size = page
             limit = int(self.budget * .90) // page
             actual: int = db.exec_driver_sql(f"PRAGMA max_page_count={limit}").scalar_one()
             if actual > limit:
@@ -162,13 +165,12 @@ class Database:
             db.merge(EvidenceRun(session="storage", payload=json.dumps(audit)))
         self.storage_audit = audit
 
-    def writable(self, raw=False):
+    def writable(self, raw=False, connection=None):
         if not self.budget:
             return True
         allocated = self.size()
-        with self.engine.connect() as db:
-            reusable: int = db.exec_driver_sql("PRAGMA freelist_count").scalar_one() * db.exec_driver_sql(
-                "PRAGMA page_size").scalar_one()
+        with (nullcontext(connection) if connection is not None else self.engine.connect()) as db:
+            reusable: int = db.exec_driver_sql("PRAGMA freelist_count").scalar_one() * self.page_size
         physical_reserve = max(int(self.budget * .05), 262144)
         if allocated >= self.budget - physical_reserve:
             # A reader may pin WAL pages. More cleanup writes then INCREASE allocation.
@@ -182,8 +184,8 @@ class Database:
     def reserve_event(self, event_id, ts):
         from sqlalchemy.dialects.sqlite import insert
 
-        self.writable()
         with self.sessions.begin() as db:
+            self.writable(connection=db.connection())
             result = db.execute(
                 insert(EventIdentity).values(event_id=event_id, ts=ts).on_conflict_do_nothing()
             )
@@ -191,25 +193,23 @@ class Database:
 
     def add(self, kind, payload, mint="", session="", ts=None):
         ts = time.time() if ts is None else ts
-        if not self.writable(raw=kind == "event"):
-            self._raw_pressure(ts)
-            return 0
-        encoded = json.dumps(payload, separators=(",", ":"), allow_nan=False)
-        if self.budget and len(encoded.encode()) > min(1048576, int(self.budget * .01)):
-            raise StorageBudgetError("Record exceeds per-write evidence reserve")
         with self.sessions.begin() as db:
-            row = Record(
-                kind=kind,
-                mint=mint,
-                session=session,
-                ts=ts,
-                payload=encoded,
-            )
-            db.add(row)
-            db.flush()
-            if self.record_observer is not None and kind in ("signal", "outcome"):
-                self.record_observer(db, row, payload)
-            return row.id
+            if self.writable(raw=kind == "event", connection=db.connection()):
+                encoded = json.dumps(payload, separators=(",", ":"), allow_nan=False)
+                if self.budget and len(encoded.encode()) > min(1048576, int(self.budget * .01)):
+                    raise StorageBudgetError("Record exceeds per-write evidence reserve")
+                row = Record(kind=kind, mint=mint, session=session, ts=ts, payload=encoded)
+                db.add(row)
+                db.flush()
+                if self.record_observer is not None and kind in ("signal", "outcome"):
+                    self.record_observer(db, row, payload)
+                identity = row.id
+            else:
+                identity = 0
+        if not identity:
+            # Reclamation owns its transaction, outside the empty guard-check scope.
+            self._raw_pressure(ts)
+        return identity
 
     def checkpoint_records(self, records, session, ts):
         """Only immutable restore records; never buffers event, paper, signal or outcome writes.
