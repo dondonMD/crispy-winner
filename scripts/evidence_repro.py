@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import platform
 import sqlite3
+import threading
 import time
 from typing import Any
 
@@ -18,7 +19,9 @@ def digest(value):
 
 def read_text(path):
     try:
-        return Path(path).read_text().strip()
+        with Path(path).open() as file:
+            value = file.read(8193)
+        return value[:8192].strip() + (" [TRUNCATED]" if len(value) > 8192 else "")
     except OSError:
         return None
 
@@ -37,6 +40,7 @@ class ReproTrace:
         self.loop_lag: deque[float] = deque(maxlen=1801)
         self.intervals: dict[str, dict[str, Any]] = {}
         self.cost_seconds = 0.0
+        self.record_lock = threading.Lock()
         psutil.cpu_percent()
         self.environment = dict(kernel=platform.release(), python=platform.python_version(),
             sqlite=sqlite3.sqlite_version, python_hash_seed=os.getenv("PYTHONHASHSEED", "random"), logical_cpus=psutil.cpu_count(),
@@ -56,7 +60,13 @@ class ReproTrace:
         # which could accidentally mask the restricted-runtime selector wakeup issue.
         self.loop_lag.append(max(0, time.perf_counter() - due))
 
-    def record(self, stage, start, duration):
+    def record(self, stage, start, duration, role=None):
+        # Retention/evaluation run on existing workers: keep diagnostic counters
+        # coherent without ever holding this lock across application work or I/O.
+        with self.record_lock:
+            self._record(stage, start, duration, role)
+
+    def _record(self, stage, start, duration, role):
         if self.epoch is None:
             return
         at = start - self.epoch
@@ -64,15 +74,26 @@ class ReproTrace:
         if interval >= 181:
             return
         row = self.intervals.setdefault(str(interval), {})
-        if stage not in row and len(row) >= 16:
+        if stage not in row and len(row) >= 20:
             return
         values = row.setdefault(stage, dict(count=0, seconds=0., maximum=0.))
         values['count'] += 1
         values['seconds'] += duration
         values['maximum'] = max(values['maximum'], duration)
+        if role is not None:
+            allowed = {"event_identity", "raw_event", "other_record", "restore_checkpoint",
+                       "outcome_batch", "pending_state", "retention", "evaluation", "unattributed"}
+            role = role if role in allowed else "unattributed"
+            item = values.setdefault("roles", {}).setdefault(role,
+                dict(count=0, seconds=0., maximum=0., over_10ms=0, over_20ms=0, over_50ms=0))
+            item["count"] += 1
+            item["seconds"] += duration
+            item["maximum"] = max(item["maximum"], duration)
+            for name, limit in [("over_10ms", .01), ("over_20ms", .02), ("over_50ms", .05)]:
+                item[name] += duration > limit
         if duration >= .05:
             self.long_count += 1
-            self.long_calls.append(dict(stage=stage, at=at, seconds=duration))
+            self.long_calls.append(dict(stage=stage, at=at, seconds=duration, **({"role": role} if role else {})))
 
     def sample(self):
         start = time.perf_counter()

@@ -17,7 +17,7 @@ def test_digest_and_bounded_trace_do_not_retain_payloads():
     assert result['loop_lag']['count'] == 1801
     for i in range(50):
         trace.record(f'stage{i}', 100, .01)
-    assert len(trace.intervals['0']) == 16
+    assert len(trace.intervals['0']) == 20
     trace.record('ignored', 100 + 1810, .1)
     assert len(trace.intervals) == 5
     assert all(set(row) == {'stage', 'at', 'seconds'} for row in result['long_calls'])
@@ -33,3 +33,21 @@ def test_loop_lag_uses_existing_clock_without_tasks(monkeypatch):
     sample = trace.sample()
     assert sample['available_memory'] > 0
     assert set(sample['pressure']) == {'cpu', 'io', 'memory'}
+
+
+def test_threaded_commit_role_counters_and_proc_text_are_bounded(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from scripts.evidence_repro import read_text
+    trace = ReproTrace()
+    trace.start(100)
+    def write(_):
+        for _ in range(1000):
+            trace.record("sqlite.commit", 101, .03, role="raw_event")
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        list(workers.map(write, range(2)))
+    values = trace.result()["intervals"]["0"]["sqlite.commit"]
+    assert values["count"] == values["roles"]["raw_event"]["count"] == 2000
+    assert values["roles"]["raw_event"]["over_20ms"] == 2000
+    path = tmp_path / "synthetic-text"
+    path.write_text("x" * 10000)
+    assert read_text(path) == "x" * 8192 + " [TRUNCATED]"

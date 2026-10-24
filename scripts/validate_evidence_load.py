@@ -11,6 +11,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 from typing import Any
 import time
 
@@ -153,6 +154,7 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
         sql_counts: Counter = Counter()
         commit_samples: deque[float] = deque(maxlen=8192)
         commit_totals = dict(count=0, seconds=0., maximum=0.)
+        commit_scope = threading.local()
         original_commit = engine.db.engine.dialect.do_commit
         def timed_commit(connection):
             start = time.perf_counter()
@@ -161,7 +163,7 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
             finally:
                 duration = time.perf_counter() - start
                 if trace is not None:
-                    trace.record("sqlite.commit", start, duration)
+                    trace.record("sqlite.commit", start, duration, role=getattr(commit_scope, "role", "unattributed"))
                 commit_samples.append(duration)
                 commit_totals["count"] += 1
                 commit_totals["seconds"] += duration
@@ -182,16 +184,28 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
                           (engine.db, "writable"), (engine.db, "context_reference"),
                           (engine.dedup, "accept"), (engine.intelligence, "observe"),
                           (observer, "observe"), (engine_module, "calculate_features"),
-                          (feature_module, "window_features")):
+                          (feature_module, "window_features"),
+                          *(((engine.db, "retention"), (engine_module, "evaluate"),
+                             (engine.intelligence.research, "commit_outcomes")) if trace is not None else ())):
             original = getattr(obj, name)
             key = type(obj).__name__ + "." + name
             stages[key] = dict(calls=0, seconds=0., maximum=0.)
 
-            def measured(*args, _original=original, _key=key, **kwargs):
+            role = {"reserve_event": "event_identity", "checkpoint": "restore_checkpoint",
+                    "save_pending": "pending_state", "retention": "retention",
+                    "evaluate": "evaluation", "commit_outcomes": "outcome_batch"}.get(name)
+            if obj is engine.db and name == "add":
+                role = "record"
+
+            def measured(*args, _original=original, _key=key, _role=role, **kwargs):
                 started = time.perf_counter()
+                previous = getattr(commit_scope, "role", "unattributed")
+                if _role is not None:
+                    commit_scope.role = ("raw_event" if args and args[0] == "event" else "other_record") if _role == "record" else _role
                 try:
                     return _original(*args, **kwargs)
                 finally:
+                    commit_scope.role = previous
                     elapsed = time.perf_counter() - started
                     if trace is not None:
                         trace.record(_key, started, elapsed)
@@ -206,6 +220,7 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
         queue_waits: list[float] = []
         producer_lags: list[float] = []
         app_ages: list[float] = []
+        durable_ages: list[float] = []
         durations: list[float] = []  # Bounded by CLI: 1800s * 100 events/s.
         by_minute: dict[int, list[float]] = {}
         quote_stats: Counter = Counter()
@@ -223,7 +238,10 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
                 if arrival is not None:
                     queue_waits.append(time.perf_counter() - arrival)
             try:
-                return original_process(event, now, **kwargs)
+                result = original_process(event, now, **kwargs)
+                if result and kwargs.get("queued") and event.kind == "trade" and engine._event_persisted:
+                    durable_ages.append(time.time() - event.ts)
+                return result
             finally:
                 if kwargs.get("queued") and event.kind == "trade":
                     durations.append(time.perf_counter() - start)
@@ -414,6 +432,9 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
             continuity=engine.trade_continuity, monitoring_standin_requests=monitoring, stages=stages,
             trade_application_age=dict(p50=percentile(app_ages,.5), p95=percentile(app_ages,.95),
                                        p99=percentile(app_ages,.99), maximum=max(app_ages,default=0)),
+            trade_durable_completion_age=dict(count=len(durable_ages),
+                p50=percentile(durable_ages,.5), p95=percentile(durable_ages,.95),
+                p99=percentile(durable_ages,.99), maximum=max(durable_ages,default=0)),
             trade_queue_wait_seconds={k: percentile(queue_waits, f) for k, f in (("p50", .5), ("p95", .95), ("p99", .99), ("maximum", 1))},
             producer_schedule_lag_seconds={k: percentile(producer_lags, f) for k, f in (("p50", .5), ("p95", .95), ("p99", .99), ("maximum", 1))},
             trade_processing_seconds=dict(p50=percentile(durations,.5), p95=percentile(durations,.95),

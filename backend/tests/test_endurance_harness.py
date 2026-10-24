@@ -47,6 +47,9 @@ async def test_retained_endurance_shutdown_restart_and_delayed_provider(tmp_path
     assert len(repro['mock_request_plan']) == result['mock_http_requests']
     assert result['quote_provider_standin']['attempted'] == 1
     assert sum(v for k, v in result['quote_provider_standin'].items() if k != 'attempted') == 1
+    assert result['trade_durable_completion_age']['count'] == result['final_accounting']['events']['trade']['persisted']
+    assert result['trade_durable_completion_age']['p99'] >= result['trade_application_age']['p99']
+    assert 'Database.retention' in result['stages'] and 'module.evaluate' in result['stages']
     assert result['final_accounting']['events']['trade']['reconciled']
     assert result['final_recovery']['accepted_reconciled']
     assert result['restart']['integrity'] == 'ok'
