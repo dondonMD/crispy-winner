@@ -23,6 +23,10 @@ from backend.app.engine import RadarEngine
 from scripts.early_edge_diagnostic import DryObserver
 
 
+def outstanding(engine):
+    return bool(engine.queue.heap or any(engine.queue.in_processing.values()) or engine.recovery.pending)
+
+
 def percentile(values, fraction):
     values = sorted(values)
     return values[min(len(values) - 1, int((len(values) - 1) * fraction))] if values else None
@@ -158,7 +162,7 @@ async def validate(seconds, rate, recovery_rate, warm_events, output):
             await inputs[0]
             await inputs[1]
             deadline = time.perf_counter() + settings.max_data_age_seconds
-            while (engine.queue.heap or engine.recovery.pending) and time.perf_counter() < deadline:
+            while outstanding(engine) and time.perf_counter() < deadline:
                 await asyncio.sleep(.1)
             pre_stop = dict(accounting=engine.accounting.snapshot(engine.queue),
                             recovery=engine.recovery.snapshot(), queue=engine.queue.snapshot())

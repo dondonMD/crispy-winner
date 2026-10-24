@@ -169,7 +169,8 @@ class Database:
         with self.engine.connect() as db:
             reusable: int = db.exec_driver_sql("PRAGMA freelist_count").scalar_one() * db.exec_driver_sql(
                 "PRAGMA page_size").scalar_one()
-        if allocated >= self.budget * .95:
+        physical_reserve = max(int(self.budget * .05), 262144)
+        if allocated >= self.budget - physical_reserve:
             # A reader may pin WAL pages. More cleanup writes then INCREASE allocation.
             raise StorageBudgetError("Physical evidence storage reserve reached")
         if allocated - reusable >= self.budget * .85:

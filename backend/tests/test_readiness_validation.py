@@ -4,6 +4,8 @@ from copy import deepcopy
 import json
 import sqlite3
 import time
+import subprocess
+import sys
 
 import httpx
 import pytest
@@ -22,7 +24,7 @@ def synthetic_db(path, mb=8):
     return db
 
 
-def test_reader_pinned_wal_cannot_bypass_physical_budget(tmp_path):
+def test_reader_pinned_wal_cannot_bypass_physical_budget(tmp_path, record_property):
     db = synthetic_db(tmp_path / "pinned.db")
     db.add("outcome", {"status": "MEASURED", "net_return_pct": -100})
     reader = sqlite3.connect(db.path)
@@ -38,6 +40,8 @@ def test_reader_pinned_wal_cannot_bypass_physical_budget(tmp_path):
         db.evidence_run("synthetic", {"status": "STORAGE_STOP"})
         assert db.size() <= 8 * 1048576
         assert db.rows("outcome")[0]["net_return_pct"] == -100
+        record_property("peak_allocated_bytes", max(peak, db.size()))
+        record_property("budget_bytes", 8 * 1048576)
     finally:
         reader.rollback()
         reader.close()
@@ -123,4 +127,120 @@ async def test_observer_batch_reuses_exact_ranking_without_changing_selection(tm
     observer.tier("synthetic:0")  # Outside the batch the current ranking is read again.
     assert len(calls) == 3
     detach()
+    await e.stop()
+
+
+def test_small_budget_preserves_room_for_bounded_final_receipt(tmp_path, record_property):
+    db = synthetic_db(tmp_path / "small.db", 1)
+    reader = sqlite3.connect(db.path)
+    reader.execute("BEGIN")
+    reader.execute("SELECT count(*) FROM records").fetchone()
+    try:
+        with pytest.raises(StorageBudgetError):
+            for _ in range(2000):
+                db.add("event", {"synthetic": "x" * 1000})
+        db.evidence_run("synthetic", {"status": "STORAGE_STOP", "bounded_fixture": "x" * 62000})
+        assert db.size() <= 1048576
+        record_property("allocated_after_receipt", db.size())
+        record_property("budget_bytes", 1048576)
+    finally:
+        reader.rollback()
+        reader.close()
+        db.engine.dispose()
+
+
+def test_sustained_retention_keeps_protected_evidence_and_contexts(tmp_path, record_property):
+    db = synthetic_db(tmp_path / "sustained.db", 16)
+    ref = db.context_reference({"synthetic": True, "degraded": {str(i): True for i in range(250)}})
+    for value in (-100, 2):
+        db.add("outcome", {"status": "MEASURED", "net_return_pct": value, "context": ref})
+    db.add("outcome", {"status": "UNAVAILABLE_PROVIDER_GAP"})
+    db.add("strategy", {"version": "synthetic"})
+    db.add("paper_account", {"cash": 20})
+    peak = 0
+    for i in range(3000):
+        db.reserve_event(str(i), 10000 + i)
+        db.add("event", {"synthetic": "x" * 16000, "context_before": ref}, ts=10000 + i)
+        peak = max(peak, db.size())
+        assert peak <= 16 * 1048576
+    assert db.storage_audit["raw_reclaimed"] and db.storage_audit["raw_omitted"]
+    record_property("peak_allocated_bytes", peak)
+    record_property("budget_bytes", 16 * 1048576)
+    record_property("raw_omitted", db.storage_audit["raw_omitted"])
+    record_property("raw_reclaimed", db.storage_audit["raw_reclaimed"])
+    db.retention(Settings())
+    assert not db.rows("event")
+    assert len(db.rows("outcome")) == 3
+    assert db.rows("strategy") and db.rows("paper_account")
+    assert db.resolve_context(ref)["synthetic"] is True
+    with db.engine.connect() as conn:
+        assert conn.exec_driver_sql("PRAGMA integrity_check").scalar_one() == "ok"
+    db.engine.dispose()
+
+
+def test_process_kill_preserves_committed_audit_and_rolls_back_partial_write(tmp_path):
+    path, ready = tmp_path / "crash.db", tmp_path / "ready.json"
+    code = '''
+import json,sys,time
+from pathlib import Path
+from backend.app.db import Database,Base,Record
+db=Database(Path(sys.argv[1]));Base.metadata.create_all(db.engine);db.configure_budget(8)
+for i in range(100): db.add("outcome",dict(status="MEASURED",net_return_pct=-i))
+db.evidence_run("synthetic",dict(status="RUNNING",at=time.time()))
+sql=db.sessions();sql.begin();sql.add(Record(kind="outcome",mint="",session="",ts=time.time(),payload='{"uncommitted":true}'));sql.flush()
+Path(sys.argv[2]).write_text(json.dumps(dict(committed=100,uncommitted=1)))
+while True: time.sleep(1)
+'''
+    child = subprocess.Popen([sys.executable, "-c", code, str(path), str(ready)])
+    try:
+        deadline = time.monotonic() + 10
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(.01)
+        assert ready.exists()
+    finally:
+        child.kill()
+        child.wait(timeout=5)
+    db = synthetic_db(path)
+    rows = db.rows("outcome")
+    assert len(rows) == 100 and all("uncommitted" not in r for r in rows)
+    with db.sessions() as sql:
+        assert json.loads(sql.get(EvidenceRun, "synthetic").payload)["status"] == "RUNNING"
+    with db.engine.connect() as conn:
+        assert conn.exec_driver_sql("PRAGMA integrity_check").scalar_one() == "ok"
+    db.engine.dispose()
+
+
+def test_load_driver_counts_detached_work_as_outstanding():
+    from types import SimpleNamespace
+    from scripts.validate_evidence_load import outstanding
+
+    engine = SimpleNamespace(queue=SimpleNamespace(heap=[], in_processing={"trade": 20}),
+                             recovery=SimpleNamespace(pending={}))
+    assert outstanding(engine)
+    engine.queue.in_processing["trade"] = 0
+    assert not outstanding(engine)
+
+
+@pytest.mark.parametrize("backlog,expected", [(False, .25), (True, 0)])
+async def test_consumer_yields_without_idle_sleep_when_work_is_waiting(tmp_path, monkeypatch, backlog, expected):
+    e = RadarEngine(Settings(mode="OBSERVE"), tmp_path / "idle.db", offline=True)
+    e.last_lab = e.last_maintenance = time.time()
+    if backlog:
+        e.submit(MarketEvent(event_id="synthetic", mint="synthetic", ts=time.time(), source="SYNTHETIC", kind="create"))
+
+    async def held_drain():
+        pass  # Isolate the end-of-cycle scheduling decision; no event is falsely processed.
+
+    sleeps = []
+
+    async def capture_delay(delay):
+        sleeps.append(delay)
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(e, "drain_events", held_drain)
+    monkeypatch.setattr("backend.app.engine.asyncio.sleep", capture_delay)
+    with pytest.raises(asyncio.CancelledError):
+        await e.run_loop()
+    assert sleeps == [expected]
+    monkeypatch.undo()
     await e.stop()
