@@ -13,3 +13,19 @@ logs/*
 !logs/.gitkeep
 *.db*
 coverage/
+
+# Local environment variants and private tool credentials
+.env.*
+!.env.example
+.envrc
+.direnv/
+.aws/
+.codex/
+# SQLite variants, journals and disposable profiling output
+*.sqlite*
+*.tmp
+*.log
+*.prof
+*.pstats
+.coverage
+htmlcov/
