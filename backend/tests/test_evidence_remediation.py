@@ -62,10 +62,11 @@ async def test_dequeue_checks_actual_time_and_stale_trade_gaps(tmp_path):
 
 def test_volatility_cache_is_exact_and_bounded():
     price_volatility.cache_clear()
-    for i in range(200):
+    for i in range(2000):
         values = (0.1, i / 1000, -0.002)
         assert price_volatility(values) == statistics.pstdev(values) * 100
-    assert price_volatility.cache_info().currsize == 128
+    assert price_volatility.cache_info().currsize == 1536
+    price_volatility.cache_clear()
 
 
 def test_cached_config_never_hides_content_drift_or_shares_mutable_settings(tmp_path):
