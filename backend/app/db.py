@@ -211,6 +211,90 @@ class Database:
                 self.record_observer(db, row, payload)
             return row.id
 
+    def checkpoint_records(self, records, session, ts):
+        """Only immutable restore records; never buffers event, paper, signal or outcome writes.
+
+        <=500 rows / 4MiB prepared data. Each commit has <=10 rows and <=64KiB,
+        except one existing-valid larger record, which commits alone.
+        A single per-session receipt advances atomically with each committed prefix.
+        """
+        prepared: list[tuple[str, str, str]] = []
+        total_bytes = 0
+        for kind, payload, mint in records:
+            if kind not in ("snapshot", "creator_profile"):
+                raise ValueError("Checkpoint record kind forbidden")
+            encoded = json.dumps(payload, separators=(",", ":"), allow_nan=False)
+            size = len(encoded.encode())
+            if self.budget and size > min(1048576, int(self.budget * .01)):
+                raise StorageBudgetError("Record exceeds per-write evidence reserve")
+            total_bytes += size
+            if len(prepared) >= 500 or total_bytes > 4194304:
+                raise StorageBudgetError("Checkpoint exceeds bounded preparation")
+            prepared.append((kind, encoded, mint))
+        digest = hashlib.sha256(json.dumps(prepared, sort_keys=True).encode()).hexdigest()
+        key = "cp:" + session
+        if len(key) > 40:
+            raise ValueError("Checkpoint session too long")
+        with self.sessions() as sql:
+            row = sql.get(EvidenceRun, key)
+            previous = json.loads(row.payload) if row else None
+            if previous and previous["ts"] > ts:
+                raise ValueError("Older checkpoint cannot replace newer progress")
+            ids = []
+            if previous and previous["ts"] == ts:
+                if previous["digest"] != digest:
+                    raise ValueError("Checkpoint retry changed frozen input")
+                ids = previous["row_ids"]
+                if len(ids) > len(prepared):
+                    raise ValueError("Invalid checkpoint prefix")
+                for identity, expected in zip(ids, prepared):
+                    stored = sql.get(Record, identity)
+                    if (stored is None or (stored.kind, stored.payload, stored.mint) != expected
+                            or stored.session != session or stored.ts != ts):
+                        raise ValueError("Missing or changed committed checkpoint row")
+        while len(ids) < len(prepared):
+            self.writable()
+            stop, size = len(ids), 0
+            while stop < len(prepared) and stop - len(ids) < 10:
+                next_size = len(prepared[stop][1].encode())
+                if stop > len(ids) and size + next_size > 65536:
+                    break
+                size += next_size
+                stop += 1
+            # No await/network call is permitted inside this synchronous transaction.
+            with self.sessions.begin() as sql:
+                # Claim the write prefix before reading it; another retry cannot append twice.
+                sql.execute(text("BEGIN IMMEDIATE"))
+                current = sql.get(EvidenceRun, key)
+                progress = json.loads(current.payload) if current else None
+                if progress and progress["ts"] > ts:
+                    raise ValueError("Older checkpoint cannot replace newer progress")
+                if progress and progress["ts"] == ts:
+                    if progress["digest"] != digest:
+                        raise ValueError("Checkpoint retry changed frozen input")
+                    remote_ids = progress["row_ids"]
+                    if remote_ids != ids:
+                        if (remote_ids[:len(ids)] != ids or len(remote_ids) > len(prepared)):
+                            raise ValueError("Conflicting checkpoint prefix")
+                        for identity, expected in zip(remote_ids[len(ids):], prepared[len(ids):]):
+                            stored = sql.get(Record, identity)
+                            if (stored is None or (stored.kind, stored.payload, stored.mint) != expected
+                                    or stored.session != session or stored.ts != ts):
+                                raise ValueError("Missing or changed committed checkpoint row")
+                        ids = remote_ids
+                        continue
+                batch = [Record(kind=kind, payload=payload, mint=mint, session=session, ts=ts)
+                         for kind, payload, mint in prepared[len(ids):stop]]
+                sql.add_all(batch)
+                sql.flush()
+                next_ids = ids + [row.id for row in batch]
+                sql.merge(EvidenceRun(session=key, payload=json.dumps(dict(
+                    ts=ts, digest=digest, row_ids=next_ids, total=len(prepared),
+                    complete=stop == len(prepared)))))
+            # Acknowledgement occurs only AFTER successful commit.
+            ids = next_ids
+        return ids
+
     def rows(self, kind, mint=None, session=None, limit=500, after=0):
         query = select(Record).where(Record.kind == kind, Record.id > after)
         if mint is not None:

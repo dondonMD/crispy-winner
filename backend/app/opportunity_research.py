@@ -2,7 +2,7 @@
 
 import json
 import math
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from backend.app.economics import TradeCostEstimator
 from backend.app.config import Settings
 from backend.app.opportunity import current
@@ -19,8 +19,10 @@ class OpportunityResearch:
         with db.sessions() as sql:
             rows = sql.scalars(select(OpportunityPendingRow).limit(self.LIMIT)).all()
             self.pending = {row.id: json.loads(row.payload) for row in rows}
+            self.committed_pending = OrderedDict((row.id, row.payload) for row in rows)
         if settings.mode == "DEMO":
             self.pending = {}
+            self.committed_pending.clear()
         self.by_mint: dict[str, set[int]] = defaultdict(set)
         for identity, payload in self.pending.items():
             self.by_mint[payload["mint"]].add(identity)
@@ -29,13 +31,24 @@ class OpportunityResearch:
         self.outcome_count = 0
 
     def save_pending(self, identity, payload):
+        # Only committed, byte-identical state may skip a write. Never cache mutable payloads.
+        encoded = json.dumps(payload, allow_nan=False) if payload is not None else None
+        if encoded is not None and self.committed_pending.get(identity) == encoded:
+            return
         with self.db.sessions.begin() as sql:
             if payload is None:
                 row = sql.get(OpportunityPendingRow, identity)
                 if row:
                     sql.delete(row)
             else:
-                sql.merge(OpportunityPendingRow(id=identity, payload=json.dumps(payload, allow_nan=False)))
+                sql.merge(OpportunityPendingRow(id=identity, payload=encoded))
+        if encoded is None:
+            self.committed_pending.pop(identity, None)
+        else:
+            self.committed_pending[identity] = encoded
+            self.committed_pending.move_to_end(identity)
+            while len(self.committed_pending) > self.LIMIT:
+                self.committed_pending.popitem(last=False)
 
     def transition(self, token, projection, now, core_version):
         if self.settings.mode == "DEMO":

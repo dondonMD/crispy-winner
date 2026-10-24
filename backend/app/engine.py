@@ -1043,17 +1043,11 @@ class RadarEngine:
     def checkpoint(self, now):
         if self.metrics.get("storage_full"):
             return
+        records = []
         for token in self.tokens.values():
             if token.creator in self.creators:
-                self.db.add(
-                    "creator_profile",
-                    self.creators[token.creator].report(token),
-                    token.mint,
-                    self.session,
-                    now,
-                )
-            self.db.add(
-                "snapshot",
+                records.append(("creator_profile", self.creators[token.creator].report(token), token.mint))
+            records.append(("snapshot",
                 {
                     "name": token.name,
                     "symbol": token.symbol,
@@ -1065,11 +1059,8 @@ class RadarEngine:
                     "grad_high": token.grad_high,
                     "grad_low": token.grad_low if math.isfinite(token.grad_low) else None,
                     "scores": token.scores,
-                },
-                token.mint,
-                self.session,
-                now,
-            )
+                }, token.mint))
+        return self.db.checkpoint_records(records, self.session, now)
 
     def capture_cohort_quality(self, now, status="RUNNING"):
         if not self.prospective:
