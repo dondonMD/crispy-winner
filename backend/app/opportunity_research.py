@@ -6,13 +6,14 @@ from collections import defaultdict, OrderedDict
 from backend.app.economics import TradeCostEstimator
 from backend.app.config import Settings
 from backend.app.opportunity import current
-from sqlalchemy import select
+from sqlalchemy import select, func
 from backend.app.db import OpportunityPendingRow, Record
 from backend.app.opportunity import provider_market
 
 
 class OpportunityResearch:
     LIMIT = 1000
+    EXPIRY_BATCH_SIZE = 10
 
     def __init__(self, db, settings, cfg, session):
         self.db, self.settings, self.cfg, self.session = db, settings, cfg, session
@@ -136,7 +137,7 @@ class OpportunityResearch:
         self.by_mint[token.mint].add(identity)
         self.save_pending(identity, payload)
 
-    def write_outcome(self, identity, payload, horizon, now, status="OBSERVED"):
+    def outcome_payload(self, identity, payload, horizon, now, status="OBSERVED"):
         end = payload["signal_ts"] + horizon
 
         def change(value, baseline):
@@ -196,27 +197,75 @@ class OpportunityResearch:
             "price_returns": "GROSS RESEARCH MEASUREMENT, NOT AFTER-COST EDGE",
             "validated_edge": False,
         }
-        remaining = [value for value in payload["remaining"] if value != horizon]
+        return outcome
+
+    def commit_outcomes(self, plans):
+        """Bounded atomic rows + pending progress; acknowledge memory only AFTER commit.
+
+        The existing research owner is single-writer. No network/await or token
+        mutation occurs in this transaction. Persisted remaining horizons provide
+        idempotency after an ambiguous commit response or a retry.
+        """
+        if not 1 <= len(plans) <= self.EXPIRY_BATCH_SIZE:
+            raise ValueError("Bounded outcome transaction required")
+        changes: dict = {}
+        remaining_by_id: dict = {}
+        inserted = 0
+        recovered = 0
+        staged = set()
         with self.db.sessions.begin() as sql:
-            row = sql.get(OpportunityPendingRow, identity)
-            if row is None:
-                payload["remaining"] = []
-                return
-            sql.add(
-                Record(
-                    kind="opportunity_outcome",
-                    mint=payload["mint"],
-                    ts=now,
-                    session=payload["session"],
-                    payload=json.dumps(outcome, allow_nan=False),
-                )
-            )
-            if remaining:
-                row.payload = json.dumps({**payload, "remaining": remaining}, allow_nan=False)
+            for identity, payload, horizon, now, status in plans:
+                row = sql.get(OpportunityPendingRow, identity)
+                canonical = self.pending.get(identity, payload)
+                needs_ack = horizon in canonical["remaining"] and (identity, horizon) not in staged
+                if row is None or (needs_ack and horizon not in json.loads(row.payload)["remaining"]):
+                    if needs_ack:
+                        # A commit may have succeeded before its response failed. Prove
+                        # the durable outcome before recovering its in-memory acknowledgement.
+                        exists = sql.scalar(select(Record.id).where(
+                            Record.kind == "opportunity_outcome", Record.session == payload["session"],
+                            func.json_extract(Record.payload, "$.signal_id") == identity,
+                            func.json_extract(Record.payload, "$.horizon") == horizon).limit(1))
+                        if exists is None:
+                            raise RuntimeError("Missing committed research outcome")
+                        recovered += 1
+                        staged.add((identity, horizon))
+                    if row is None:
+                        changes[identity] = (payload, [], None)
+                        continue
+                remaining = remaining_by_id.get(identity)
+                if remaining is None:
+                    remaining = json.loads(row.payload)["remaining"]
+                if horizon not in remaining:
+                    changes[identity] = (payload, list(remaining), row.payload)
+                    continue
+                outcome = self.outcome_payload(identity, payload, horizon, now, status)
+                sql.add(Record(kind="opportunity_outcome", mint=payload["mint"],
+                    ts=now, session=payload["session"], payload=json.dumps(outcome, allow_nan=False)))
+                remaining = [value for value in remaining if value != horizon]
+                encoded = json.dumps({**payload, "remaining": remaining}, allow_nan=False) if remaining else None
+                if encoded is None:
+                    sql.delete(row)
+                else:
+                    row.payload = encoded
+                remaining_by_id[identity] = remaining
+                changes[identity] = (payload, remaining, encoded)
+                inserted += 1
+                staged.add((identity, horizon))
+        # A rollback/failed commit reaches none of these acknowledgements.
+        for identity, (payload, remaining, encoded) in changes.items():
+            payload["remaining"] = remaining
+            if encoded is None:
+                self.committed_pending.pop(identity, None)
             else:
-                sql.delete(row)
-        payload["remaining"] = remaining
-        self.outcome_count += 1
+                self.committed_pending[identity] = encoded
+                self.committed_pending.move_to_end(identity)
+                while len(self.committed_pending) > self.LIMIT:
+                    self.committed_pending.popitem(last=False)
+        self.outcome_count += inserted + recovered
+
+    def write_outcome(self, identity, payload, horizon, now, status="OBSERVED"):
+        self.commit_outcomes([(identity, payload, horizon, now, status)])
 
     def observe(self, token, now):
         if self.settings.mode == "DEMO":
@@ -265,7 +314,7 @@ class OpportunityResearch:
                 payload["migration_ts"] = token.graduation
             self.save_pending(identity, payload)
 
-    def settle(self, identity, payload, now):
+    def due_outcomes(self, identity, payload, now):
         for horizon in list(payload["remaining"]):
             due = payload["signal_ts"] + horizon
             if now <= due:
@@ -277,7 +326,9 @@ class OpportunityResearch:
                 or payload["migration_ts"] is not None
             )
             status = "OBSERVED" if covered else "UNAVAILABLE_GAP"
-            self.write_outcome(identity, payload, horizon, now, status)
+            yield identity, payload, horizon, now, status
+
+    def forget_finished(self, identity, payload):
         if not payload["remaining"]:
             self.pending.pop(identity, None)
             self.by_mint[payload["mint"]].discard(identity)
@@ -285,6 +336,27 @@ class OpportunityResearch:
                 del self.by_mint[payload["mint"]]
             self.save_pending(identity, None)
 
+    def settle(self, identity, payload, now):
+        for plan in self.due_outcomes(identity, payload, now):
+            self.write_outcome(*plan)
+        self.forget_finished(identity, payload)
+
     def expire(self, now):
+        plans: list = []
+
+        def flush():
+            self.commit_outcomes(plans)
+            for identity, payload, *_ in plans:
+                if identity in self.pending:
+                    self.forget_finished(identity, payload)
+            plans.clear()
+
         for identity, payload in list(self.pending.items()):
-            self.settle(identity, payload, now)
+            for plan in self.due_outcomes(identity, payload, now):
+                plans.append(plan)
+                if len(plans) == self.EXPIRY_BATCH_SIZE:
+                    flush()
+            if not payload["remaining"] and identity in self.pending:
+                self.forget_finished(identity, payload)
+        if plans:
+            flush()
