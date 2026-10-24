@@ -50,6 +50,8 @@ async def test_retained_endurance_shutdown_restart_and_delayed_provider(tmp_path
     assert result['restart']['security_requires_refresh']
     assert result['restart']['paper_cash'] == 20 and result['restart']['positions'] == 0
     assert result['restart']['stopped_receipt']['status'] == 'STOPPED'
+    assert result['restart']['storage_after_restart']['wal'] == 0
+    assert result['restart']['storage_after_restart']['shm'] == 0
     assert output.with_suffix('.run').joinpath('synthetic.db').exists()
     assert output.with_suffix('.progress.json').exists()
     for sample in result['samples']:

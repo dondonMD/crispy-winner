@@ -1,6 +1,6 @@
 """Synthetic 250-candidate sustained consumer validation; no live network/cohort."""
 import argparse
-from contextlib import nullcontext
+from contextlib import nullcontext, closing
 from collections import Counter
 import os
 import sqlite3
@@ -283,7 +283,7 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
         shutdown_storage = storage_bytes(db_path)
         restart = None
         if endurance:
-            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as connection:
+            with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as connection:
                 integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
                 persisted_stop = json.loads(connection.execute(
                     "SELECT payload FROM evidence_runs WHERE session=?", (engine.session,)).fetchone()[0])
