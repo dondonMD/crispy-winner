@@ -31,3 +31,14 @@ Relevant focused audit/boundary/current-writer tests:24 passed in6.01s. No produ
 Evaluated driver-level bound SQL within existing transactions on project ext4,500 pairs ABBA: current CPU1.278/.903s vs candidate1.082/.839s, same1000 commits, almost identical commit wall time within each adjacent pair. Saving7–15% of a low-level subset is small/variable and dwarfed by observed whole-run I/O variation; it does not establish sustained50/s. Direct driver binds also require preserving explicit Float conversion/type behavior. Candidate remains an ignored diagnostic only; NOT adopted into production. Avoid another speculative micro-optimization while the two-commit floor and cross-component rollback problem remain.
 
 Next measurements use the SAME production source as7bdab30, fresh project-filesystem DBs, unchanged250 candidates/200 warm events/20s freshness/burst/recovery/cadence/durability. Reuse the predeclared120s40/50 driver and stop at first50/s failure; only three fully passing50s trials could qualify further review. Existing aligned no-growth guard (slope<=0 and late-three mean<=early-three after20s) stays fixed. All results, including failure, will be preserved;600s remains conditional and PRE_COHORT_READY remains NO.
+
+### Publication recovery — 2026-10-25
+
+GitHub DNS and remote connectivity were restored from the user's WSL terminal.
+The audited development branch was successfully published using
+`git push -u origin remediation/early-edge-evidence-readiness`.
+Git confirmed creation of the remote branch and configured upstream tracking.
+The earlier DNS-blocked push remains documented above as historical evidence.
+
+This publication does not establish PRE_COHORT_READY.
+PRE_COHORT_READY remains NO. No cohort or trading was initiated.

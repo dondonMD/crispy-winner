@@ -25,7 +25,7 @@ def test_held_identity_transaction_blocks_existing_independent_observer_writer(t
             # Real existing signal/outcome writer uses its own Session, not outer.
             db.add(
                 "outcome",
-                {"status": "UNAVAILABLE_GAP", "net_return_pct": -100},
+                {"status": "UNAVAILABLE_GAP", "net_return_pct": None},
                 "synthetic",
                 "synthetic",
                 100,
