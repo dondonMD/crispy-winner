@@ -160,3 +160,33 @@ test('SSE receipt between clock ticks uses actual render time without accepting 
  expect(screen.getByText(/0 fresh speculative reviews/)).toBeTruthy();
  expect(screen.getAllByText(/DATA STALE/).length).toBeGreaterThan(0);
 });
+
+function cooling21():EarlyMarket {const base=early();return {...base,version:'early-market-v2.1-SYNTHETIC',classification:'BUYING COOLING / WAIT',direction:'COOLING',attention_rank:0,speculative_review:false,supporting_timeframe:'30s HISTORY; 10s QUIET / INSUFFICIENT BUYING',supporting_window_seconds:30,activity_state:'QUIET',active_buying:false,latest_trade_age:12.62,latest_buy_age:13,interpretation:['Positive historical buying; no supported latest 10s buying'],windows:{...base.windows,'10':{...base.windows['10'],samples:0,buys:0,sells:0,complete:true,coverage_seconds:10,raw_unique_buyers:0},'30':{...base.windows['30'],samples:6,buys:5,sells:1,complete:true,coverage_seconds:30,units_valid:true,currency:'SOL',net_flow:2.558}}}}
+
+test('V2.1 distinguishes valid cooling assessment from active review without collapsing the reading list',()=>{
+ const active={...opportunity(),early_market:{...early(),version:'early-market-v2.1-SYNTHETIC',classification:'ACTIVE EMERGING BULLISH',active_buying:true,supporting_timeframe:'10s',activity_state:'ACTIVE BUYING',latest_trade_age:1}};
+ const {rerender}=render(<OpportunityPage data={data([active])} mode="OBSERVE" onSelect={()=>{}}/>);
+ fireEvent.click(screen.getByLabelText('SPECULATIVE REVIEW lane only'));
+ const card=screen.getByRole('region',{name:`Opportunity for ${active.name}`});
+ const details=card.querySelector('details')!;details.open=true;
+ const cooled={...active,early_market:cooling21()};
+ rerender(<OpportunityPage data={data([cooled])} mode="OBSERVE" onSelect={()=>{}}/>);
+ expect(screen.getByRole('region',{name:`Opportunity for ${active.name}`})).toBe(card);
+ expect(details.open).toBe(true);
+ expect(within(card).getAllByText(/BUYING COOLING \/ WAIT/).length).toBeGreaterThan(0);
+ expect(within(card).getAllByText(/12.6s before assessment/).length).toBeGreaterThan(0);
+ expect(screen.getByText(/0 fresh speculative reviews/)).toBeTruthy();
+ expect((screen.getByLabelText('SPECULATIVE REVIEW lane only') as HTMLInputElement).checked).toBe(true);
+ expect(speculativeReview({...cooled,early_market:{...cooling21(),speculative_review:true}},Date.now()/1000)).toBe(false);
+});
+
+test('manual position uses the same cooling context without changing the exit assessment',async()=>{
+ const {PositionCard}=await import('./ManualPositions');
+ const p={position_id:'SYNTHETIC-POSITION',mint:'SYNTHETIC-MINT',status:'OPEN',monitoring:{status:'CURRENT',observed_at:Date.now()/1000,valid_until:Date.now()/1000+10,reasons:[]},amount_usd:4,opened_at:Date.now()/1000,entry_price_usd:null,entry_market_cap_usd:null,thesis:{},early_market:cooling21(),exit:{action:'MONITOR',reasons:[],warnings:[],mark:null,peak_mark:null,gross_change_pct:null,market_cap_change_pct:null,estimated_net_pnl_usd:null,estimated_net_return_pct:null,drawdown_pct:null,cost_estimate:null,thesis_invalidated:false,manual_execution_only:true,validated_edge:false}};
+ render(<PositionCard position={p}/>);
+ expect(screen.getByText('HOLD WATCH')).toBeTruthy();
+ expect(screen.getByText(/BUYING COOLING \/ WAIT/)).toBeTruthy();
+ expect(screen.getByText(/Supporting timeframe: 30s HISTORY/)).toBeTruthy();
+ expect(p.exit.action).toBe('MONITOR');
+ expect(screen.queryByText(/SPECULATIVE REVIEW — RESEARCH ONLY/)).toBeNull();
+});

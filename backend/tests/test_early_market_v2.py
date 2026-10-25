@@ -88,7 +88,7 @@ def test_developing_bullish_is_separate_from_current_and_immutable():
 def test_10_second_activity_can_emerge_before_180():
     t = candidate(age=15)
     r = view(t)
-    assert r["classification"] == "EMERGING BULLISH"
+    assert r["classification"] == "ACTIVE EMERGING BULLISH"
     assert r["windows"]["10"]["complete"] and not r["windows"]["30"]["complete"]
 
 
@@ -162,7 +162,7 @@ def test_unknown_units_allow_counts_but_never_amount_or_chart_claim():
     assert w["buys"] > 0 and w["raw_unique_buyers"] > 0
     assert w["independent_buyers"] is None and w["net_flow"] is None and w["flow_ratio"] is None
     assert w["coordination_suspected"] is None and r["price"] is None
-    assert r["classification"] == "EMERGING BULLISH" and r["uncertainty"] == "VERY HIGH"
+    assert r["classification"] == "ACTIVE EMERGING BULLISH" and r["uncertainty"] == "VERY HIGH"
 
 
 @pytest.mark.parametrize("kind", ["stale", "recovery", "late_discovery", "unverified_curve"])
@@ -246,7 +246,7 @@ async def test_integration_preserves_original_projection_paper_and_receipts(tmp_
         await e.stop()
 
 
-def test_declining_arrivals_with_old_buying_are_not_bullish_continuation():
+def test_active_ten_seconds_can_coexist_with_declining_thirty_second_history():
     t = candidate()
     # Heavy earlier activity; only a few recent buys, still source-fresh.
     for i in range(20):
@@ -265,9 +265,9 @@ def test_declining_arrivals_with_old_buying_are_not_bullish_continuation():
         )
     prepare(t)
     r = view(t)
-    assert r["classification"] == "NEUTRAL / WAIT"
-    assert any("exhaustion" in x for x in r["interpretation"])
-    assert not r["speculative_review"]
+    assert r["classification"] == "ACTIVE EMERGING BULLISH"
+    assert any("declined" in x for x in r["warnings"])
+    assert r["speculative_review"]
 
 
 def test_loss_watermark_caps_optimistic_context_and_future_data_is_excluded():
@@ -344,3 +344,187 @@ def test_known_net_selling_cannot_be_hidden_by_many_small_buys():
     assert r["windows"]["30"]["buys"] > r["windows"]["30"]["sells"]
     assert r["windows"]["30"]["net_flow"] < 0
     assert r["classification"] == "BEARISH PRESSURE" and not r["speculative_review"]
+
+
+def quiet_positive_history():
+    t = candidate()
+    t.events = deque(
+        [
+            MarketEvent(
+                mint=t.mint,
+                ts=NOW - age,
+                source="Solana WSS",
+                kind="trade",
+                event_id=f"quiet:{i}",
+                side="buy" if i < 5 else "sell",
+                wallet=f"history-{i}",
+                volume=1 + i / 11,
+                currency="SOL",
+            )
+            for i, age in enumerate((18, 17, 16, 14, 13, 12.62))
+        ],
+        maxlen=500,
+    )
+    prepare(t)
+    return t
+
+
+def test_minemons_like_positive_history_is_cooling_not_active_or_bearish():
+    t = quiet_positive_history()
+    r = view(t)
+    assert r["windows"]["10"]["samples"] == 0
+    assert r["windows"]["30"]["buys"] == 5 and r["windows"]["30"]["sells"] == 1
+    assert r["windows"]["30"]["net_flow"] > 0
+    assert r["classification"] == "BUYING COOLING / WAIT"
+    assert r["activity_state"] == "QUIET" and not r["active_buying"] and not r["speculative_review"]
+    assert r["valid_until"] > NOW  # Valid assessment is distinct from active momentum.
+    assert r["supporting_window_seconds"] == 30
+    assert r["latest_trade_age"] == pytest.approx(12.62)
+
+
+def test_pepeoz_like_clean_ten_seconds_is_count_led_and_early():
+    t = candidate(age=25)
+    t.security["data_quality"] = "UNKNOWN"
+    t.events = deque(
+        [
+            MarketEvent(
+                mint=t.mint,
+                ts=NOW - 9 + i / 4,
+                source="Solana WSS",
+                kind="trade",
+                event_id=f"active:{i}",
+                side="buy" if i < 19 else "sell",
+                wallet=f"observed-{i % 3}",
+                volume=0 if i < 9 else 1 + i / 17,
+                currency="unknown" if i < 9 else "SOL",
+            )
+            for i in range(26)
+        ],
+        maxlen=500,
+    )
+    prepare(t)
+    r = view(t)
+    assert r["classification"] == "ACTIVE EMERGING BULLISH" and r["speculative_review"]
+    assert r["supporting_window_seconds"] == 10 and r["active_buying"]
+    assert r["windows"]["10"]["buys"] == 19 and r["windows"]["10"]["sells"] == 7
+    assert r["uncertainty"] == "VERY HIGH"
+    assert r["windows"]["10"]["net_flow"] is None and r["windows"]["10"]["independent_buyers"] is None
+    assert not r["windows"]["30"]["complete"] and not r["windows"]["180"]["complete"]
+    assert not t.features["180"]["continuity_valid"] and r["price"] is None
+
+
+def test_quiet_curve_pullback_requires_genuine_new_buying():
+    t = quiet_positive_history()
+    t.curve_peak_progress = 50
+    before = view(t)
+    assert before["classification"] == "BUYING COOLING / WAIT"
+    for i in range(3):
+        t.events.append(
+            MarketEvent(
+                mint=t.mint,
+                ts=NOW - 3 + i,
+                source="Solana WSS",
+                kind="trade",
+                event_id=f"renewed:{i}",
+                side="buy",
+                wallet=f"new-{i}",
+                volume=3 + i / 7,
+                currency="SOL",
+            )
+        )
+    prepare(t)
+    after = view(t)
+    assert (
+        after["classification"] == "PULLBACK WATCH" and after["active_buying"] and after["speculative_review"]
+    )
+    assert before["windows"]["10"]["samples"] == 0  # Prior snapshot was not rewritten.
+
+
+def test_immediate_selling_overturns_older_positive_history():
+    t = candidate()
+    for i in range(5):
+        t.events.append(
+            MarketEvent(
+                mint=t.mint,
+                ts=NOW - 1 - i / 10,
+                source="Solana WSS",
+                kind="trade",
+                event_id=f"selling:{i}",
+                side="sell",
+                wallet=f"seller-{i}",
+                volume=5 + i / 7,
+                currency="SOL",
+            )
+        )
+    prepare(t)
+    r = view(t)
+    assert r["classification"] == "BEARISH PRESSURE" and not r["speculative_review"]
+    assert r["supporting_window_seconds"] == 10 and r["activity_state"] == "SELL DOMINANT"
+
+
+def test_pending_or_missing_ten_second_coverage_is_not_proven_quiet():
+    t = quiet_positive_history()
+    for kw in ({"pending": True}, {"clean": 4}):
+        r = view(t, **kw)
+        assert r["classification"] == "INSUFFICIENT DATA"
+        assert r["activity_state"] == "UNAVAILABLE" and not r["speculative_review"]
+
+
+def test_late_processed_trade_cannot_rewrite_frozen_assessment():
+    t = candidate(age=15)
+    prefix = deepcopy(t)  # Availability cut: source-time filtering alone is insufficient.
+    recorded = view(prefix)
+    immutable = deepcopy(recorded)
+    late = MarketEvent(
+        mint=t.mint,
+        ts=NOW - 1,
+        source="Solana WSS",
+        kind="trade",
+        event_id="later-processed-old-source-time",
+        side="sell",
+        wallet="later",
+        volume=100,
+        currency="SOL",
+    )
+    t.events.append(late)  # This processing occurs at NOW+2, after the frozen cut.
+    t.last_analysis = NOW + 2
+    t.features = calculate_features(t, NOW + 2)
+    current = view(t, now=NOW + 2)
+    assert current["windows"]["30"]["samples"] == recorded["windows"]["30"]["samples"] + 1
+    assert recorded == immutable and view(prefix) == immutable
+    assert recorded["classification"] == "ACTIVE EMERGING BULLISH"
+    assert current["classification"] == "BEARISH PRESSURE"
+
+
+def test_no_activity_after_last_buy_expires_active_interpretation():
+    t = candidate(age=15)
+    active = view(t)
+    assert active["speculative_review"]
+    assert active["valid_until"] <= t.last_trade + 10
+    after = view(t, now=NOW + 11)
+    assert not after["active_buying"] and not after["speculative_review"]
+    assert after["classification"] != "BEARISH PRESSURE"  # No new selling was observed.
+
+
+def test_continuously_strengthening_buys_retain_supported_developing_status():
+    t = candidate()
+    for i in range(3):
+        t.events.append(
+            MarketEvent(
+                mint=t.mint,
+                ts=NOW - 3 + i,
+                source="Solana WSS",
+                kind="trade",
+                event_id=f"strength:{i}",
+                side="buy",
+                wallet=f"breadth-{i}",
+                volume=3 + i / 7,
+                currency="SOL",
+            )
+        )
+    prepare(t)
+    r = view(t)
+    assert r["classification"] == "BULLISH DEVELOPING" and r["speculative_review"]
+    assert r["supporting_timeframe"] == "10s + 30s + 60s"
+    assert r["windows"]["10"]["arrival_acceleration"] >= 0
+    assert r["active_buying"] and not t.features["180"]["continuity_valid"]

@@ -390,7 +390,8 @@ def opportunity_view(
 
 # Separate descriptive research policy. Does not change opportunity-v1 or entry gates.
 EARLY_MARKET_POLICY: dict[str, Any] = dict(windows=[10, 30, 60, 180], min_samples=3, min_buyers=3,
-                           persistence_fraction=0.5, semantics='counts_then_consistent_amounts')
+                           persistence_fraction=0.5, semantics='counts_then_consistent_amounts',
+                           revision='2.1', bullish_window_seconds=10, history_window_seconds=30)
 
 
 def early_market_view(token, settings, cfg, now, dynamics, clean_seconds, pending):
@@ -398,6 +399,7 @@ def early_market_view(token, settings, cfg, now, dynamics, clean_seconds, pendin
 
     Clean observed-window coverage never means CURRENT or executable. Amount-based estimates
     are reused only with identical timestamp membership to the cached calculation.
+    Caller supplies as-of processed state; source time alone cannot reconstruct historical availability.
     """
     clean_seconds = min(max(0, clean_seconds), max(0, now - max(
         token.trade_tracking_since, token.trade_gap, token.postgrad_gap, token.buffer_loss_at or 0)))
@@ -442,11 +444,24 @@ def early_market_view(token, settings, cfg, now, dynamics, clean_seconds, pendin
             limitations=([f'Incomplete {seconds}s continuity; retained samples only'] if not ready else [])
                 + ([] if units else ['Amount-weighted flow/coordination unavailable: unknown or mixed units'])
                 + ([] if same else ['Cached amount/breadth metrics unavailable for this exact membership']))
-    short = next((windows[str(s)] for s in (30, 10) if windows[str(s)]['complete']
-                  and windows[str(s)]['samples'] >= EARLY_MARKET_POLICY['min_samples']
-                  and windows[str(s)]['freshness'] == 'RECENT'), None)
+    def supported(window):
+        return (window['complete'] and window['samples'] >= EARLY_MARKET_POLICY['min_samples']
+                and window['freshness'] == 'RECENT')
+    latest = windows[str(EARLY_MARKET_POLICY['bullish_window_seconds'])]
+    history = windows[str(EARLY_MARKET_POLICY['history_window_seconds'])]
     medium = windows['60']
-    latest = windows['10']
+    short = latest if supported(latest) else history if supported(history) else None
+    active_buying = bool(supported(latest) and latest['buys'] > latest['sells']
+                        and latest['raw_unique_buyers'] >= EARLY_MARKET_POLICY['min_buyers']
+                        and (latest['net_flow'] is None or latest['net_flow'] > 0))
+    active_selling = bool(supported(latest) and (latest['sells'] > latest['buys']
+                         or latest['net_flow'] is not None and latest['net_flow'] < 0))
+    positive_history = bool(supported(history) and history['buys'] > history['sells']
+                           and (history['net_flow'] is None or history['net_flow'] > 0))
+    activity = ('UNAVAILABLE' if not latest['complete'] else 'QUIET' if not latest['samples'] else
+                'SELL DOMINANT' if active_selling else 'ACTIVE BUYING' if active_buying else 'THIN / MIXED')
+    timeframe = 'UNAVAILABLE'
+    supporting_seconds: int | None = None
     missing = ['Executable buy/sell routes, actual interface costs and after-cost outcomes unverified']
     warnings = []
     evidence = []
@@ -506,53 +521,70 @@ def early_market_view(token, settings, cfg, now, dynamics, clean_seconds, pendin
     if token.degraded:
         risks.append('Recorded evidence degradation')
     hard = bool(risks)
-    coordinated = bool(short and short['coordination_suspected'])
+    coordination_window = (latest if supported(latest) and latest['coordination_suspected'] else
+                           history if supported(history) and history['coordination_suspected'] else None)
+    coordinated = coordination_window is not None
     label, direction = 'NEUTRAL / WAIT', 'NEUTRAL'
     if hard:
         label, direction = 'AVOID', 'RISK'
+        timeframe = 'RECORDED RISK EVIDENCE'
         evidence.extend(risks)
     elif (token.graduation is not None or token.decision.get('decision') == 'MISSED'
           or dynamics.current is not None and dynamics.current >= 85):
         label, direction = 'TOO EXTENDED', 'CAUTION'
+        timeframe = 'LIFECYCLE / CORE ASSESSMENT'
         evidence.append('Existing missed/extended assessment, post-graduation or >=85% high lifecycle region; not a claim of price growth')
-    elif not short or dynamics.freshness != 'CURRENT':
+    elif not latest['complete'] or not short or dynamics.freshness != 'CURRENT':
         label = 'INSUFFICIENT DATA'
-        evidence.append('No fresh, clean 10s/30s count window with at least three retained canonical trades')
+        evidence.append('Current interpretation needs clean 10s continuity and supported observations; gaps are not inactivity')
     elif dynamics.retreat_pp is not None and dynamics.retreat_pp >= cfg.collapse_pp:
         label, direction = 'BEARISH PRESSURE', 'BEARISH'
-        evidence.append('Verified curve retreat meets the existing collapse boundary; progression thesis is not intact')
+        timeframe = 'VERIFIED CURVE HISTORY'
+        evidence.append('Verified curve retreat meets the existing collapse boundary; this is lifecycle evidence, not inferred selling')
     elif coordinated:
         label, direction = 'AVOID', 'RISK'
+        timeframe, supporting_seconds = ('10s SIZE/TIMING', 10) if coordination_window is latest else ('30s SIZE/TIMING', 30)
         evidence.append('Suspected coordinated sizes/timing; not proof of common ownership; bullish reading withheld')
-    elif (short['sells'] > short['buys']
-          or short['net_flow'] is not None and short['net_flow'] < 0
-          or latest['complete'] and latest['samples'] >= 3
-          and latest['freshness'] == 'RECENT' and latest['sells'] > latest['buys']):
+    elif active_selling:
         label, direction = 'BEARISH PRESSURE', 'BEARISH'
-        evidence.append('Observed sell dominance by count or consistent-unit net flow in a current clean short window')
-    elif (short['arrival_acceleration'] is not None and short['arrival_acceleration'] < 0
-          and medium['buys'] > short['buys']):
-        direction = 'CAUTION'
-        evidence.append('Buying exhaustion: recent arrival declined; earlier buying does not establish continuation')
-    elif short['buys'] > short['sells'] and short['raw_unique_buyers'] >= EARLY_MARKET_POLICY['min_buyers']:
+        timeframe, supporting_seconds = '10s', 10
+        evidence.append('Observed sell dominance by count or consistent-unit net flow in the clean latest 10s')
+    elif active_buying:
+        timeframe, supporting_seconds = '10s', 10
         if dynamics.retreat_pp is not None and dynamics.retreat_pp >= cfg.pullback_min_pp:
             label, direction = 'PULLBACK WATCH', 'RECOVERING'
-            evidence.append('Verified curve retreat with renewed observed buying; not a price pullback claim')
-        elif (medium['complete'] and medium['units_valid'] and medium['independent_buyers'] is not None
+            timeframe = '10s + VERIFIED CURVE HISTORY'
+            evidence.append('Verified curve retreat with renewed clean 10s buying; not a price pullback claim')
+        elif (supported(medium) and medium['units_valid'] and medium['independent_buyers'] is not None
               and medium['independent_buyers'] >= EARLY_MARKET_POLICY['min_buyers']
               and (medium['buying_persistence'] or 0) >= EARLY_MARKET_POLICY['persistence_fraction']
-              and (medium['net_flow'] or 0) > 0 and (short['arrival_acceleration'] or 0) >= 0):
+              and (medium['net_flow'] or 0) > 0 and positive_history
+              and (latest['arrival_acceleration'] or 0) >= 0
+              and (history['arrival_acceleration'] or 0) >= 0):
             label, direction = 'BULLISH DEVELOPING', 'BULLISH'
-            evidence.append('Clean 60s breadth, positive amount flow and buying across at least half of six bins')
+            timeframe, supporting_seconds = '10s + 30s + 60s', 60
+            evidence.append('Active 10s buying supported by positive 30s history and persistent consistent-unit 60s breadth/flow')
         else:
-            label, direction = 'EMERGING BULLISH', 'BULLISH'
-            evidence.append('Recent clean buy-count dominance across at least three observed buyer addresses')
+            label, direction = 'ACTIVE EMERGING BULLISH', 'BULLISH'
+            evidence.append('Clean latest 10s buy-count dominance across at least three observed buyer addresses; not proof of acceleration')
+        if history['arrival_acceleration'] is not None and history['arrival_acceleration'] < 0:
+            warnings.append('30s arrival has declined despite active 10s buying; longer persistence unconfirmed')
+    elif positive_history:
+        label, direction = 'BUYING COOLING / WAIT', 'COOLING'
+        timeframe, supporting_seconds = '30s HISTORY; 10s QUIET / INSUFFICIENT BUYING', 30
+        evidence.append('Positive 30s buying history, but latest 10s buying/breadth is insufficient; historical net flow is not current acceleration')
+    elif supported(latest):
+        timeframe, supporting_seconds = '10s', 10
+        evidence.append('Mixed current participation; no supported bullish continuation')
     else:
-        evidence.append('Mixed participation or buying exhaustion; no supported bullish continuation')
+        label = 'INSUFFICIENT DATA'
+        evidence.append('No adequately sampled current interpretation; quiet/thin activity is not bearish selling')
+    if active_buying and supported(history) and not positive_history:
+        warnings.append('Active 10s buying conflicts with 30s context; developing momentum is unconfirmed')
     if not short:
         missing.append('Fresh clean 10s/30s coverage with at least three canonical trades unavailable')
     if short:
-        evidence.append(f"Recent window: {short['buys']} buys / {short['sells']} sells; "
+        evidence.append(f"{'10s' if short is latest else '30s historical context'}: {short['buys']} buys / {short['sells']} sells; "
                         f"{short['raw_unique_buyers']} observed buyer addresses, not necessarily independent")
         if not short['units_valid']:
             missing.append('Amount-weighted flow, independent-buyer estimate and coordination model unavailable')
@@ -560,15 +592,17 @@ def early_market_view(token, settings, cfg, now, dynamics, clean_seconds, pendin
         warnings.append('Rising displayed price lacks supporting current amount-weighted buying flow')
     if windows['180']['complete'] is False:
         warnings.append('180s established evidence incomplete; short-window interpretation only')
-    eligible = bool(direction in ('BULLISH', 'RECOVERING') and short and not hard and not coordinated
+    eligible = bool(direction in ('BULLISH', 'RECOVERING') and active_buying and not hard and not coordinated
                     and token.graduation is None and dynamics.freshness == 'CURRENT'
                     and token.state in (State.WATCHING, State.MATURING, State.NEAR_GRADUATION))
     # Ordinal attention only, never expected return or probability.
-    rank = (3 if label == 'BULLISH DEVELOPING' else 2 if label == 'EMERGING BULLISH' else
+    rank = (3 if label == 'BULLISH DEVELOPING' else 2 if label == 'ACTIVE EMERGING BULLISH' else
             1 if label == 'PULLBACK WATCH' else 0)
     valid_until = min(now + min(EARLY_MARKET_POLICY['windows']),
                       token.last_trade + settings.max_data_age_seconds,
                       token.last_curve + cfg.curve_fresh_seconds)
+    if active_buying:
+        valid_until = min(valid_until, max(e[0] for e in observed if e[1] == 'buy') + 10)
     if security_current:
         valid_until = min(valid_until, token.security['last_updated'] + settings.security_ttl_seconds)
     if price:
@@ -578,7 +612,13 @@ def early_market_view(token, settings, cfg, now, dynamics, clean_seconds, pendin
     return dict(version=EARLY_MARKET_VERSION, observed_at=now,
         valid_until=valid_until,
         classification=label, direction=direction, attention_rank=rank,
-        uncertainty='VERY HIGH' if not security_current or not distribution_known or not short or not short['units_valid'] else
+        supporting_timeframe=timeframe, supporting_window_seconds=supporting_seconds,
+        activity_state=activity, active_buying=active_buying,
+        latest_trade_age=now-max(e[0] for e in observed) if observed else None,
+        latest_buy_age=now-max(e[0] for e in observed if e[1] == 'buy')
+                       if any(e[1] == 'buy' for e in observed) else None,
+        uncertainty='VERY HIGH' if (not security_current or not distribution_known or not short
+                                   or not short['units_valid'] or short['independent_buyers'] is None) else
                     'HIGH' if not windows['180']['complete'] or price is None else 'UNCALIBRATED',
         basis='CONSISTENT-UNIT FLOW' if short and short['units_valid'] and short['independent_buyers'] is not None
               else 'CANONICAL EVENT COUNTS ONLY' if short else 'LIFECYCLE / INCOMPLETE OBSERVATIONS',
@@ -593,16 +633,18 @@ def early_market_view(token, settings, cfg, now, dynamics, clean_seconds, pendin
                      ['Independent risk investigation; hard gates remain binding'] if direction == 'RISK' else
                      ['Fresh independent buyer breadth and sustained consistent-unit buying',
                       'Verified security and current liquidity/route evidence']),
-        invalidates=(['Sustained buying replacing selling across clean windows',
+        invalidates=(['Renewed supported clean 10s buying can replace cooling; 30s history alone cannot',
+                     'New selling/risk or loss of continuity ends the watch context'] if direction == 'COOLING' else
+                    ['Sustained buying replacing selling across clean windows',
                      'Loss of continuity or stale observations'] if direction == 'BEARISH' else
                     ['Momentum cannot override known hard risks or core rejection',
                      'Stale observations cannot establish that a historical risk disappeared'] if direction == 'RISK' else
                     ['Creator selling, security failure or provider disagreement',
-                     'Sell dominance, loss of short-window continuity or stale observations']),
+                     'Loss of active 10s buying, sell dominance, continuity loss or stale observations']),
         manual_only=True, validated_edge=False)
 
 
 # Source-pinned separately from the unchanged opportunity-v1 research protocol.
-EARLY_MARKET_VERSION = 'early-market-v2-' + hashlib.sha256(
+EARLY_MARKET_VERSION = 'early-market-v2.1-' + hashlib.sha256(
     json.dumps(EARLY_MARKET_POLICY, sort_keys=True).encode()
     + inspect.getsource(early_market_view).encode()).hexdigest()[:12]
