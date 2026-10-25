@@ -38,6 +38,9 @@ def test_pool_mint_and_virtual_reserves():
     raw = bytearray(261)
     raw[:8] = hashlib.sha256(b"account:Pool").digest()[:8]
     raw[43:75] = bytes(mint)
+    # Required identities are real keys, not zero-filled account placeholders.
+    for offset in (75, 139, 171):
+        raw[offset:offset + 32] = bytes(Pubkey.new_unique())
     raw[245:261] = (100).to_bytes(16, "little", signed=True)
     pool = parse_pool(encoded(raw, PUMP_SWAP_PROGRAM), str(mint))
     assert pool["virtual_quote_reserves"] == 100

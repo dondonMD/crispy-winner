@@ -31,13 +31,14 @@ def parse_pool(account, mint):
     def key(offset):
         return str(Pubkey.from_bytes(raw[offset : offset + 32]))
 
-    if key(43) != mint:
+    identities = {"base_mint": key(43), "quote_mint": key(75),
+                  "base_account": key(139), "quote_account": key(171)}
+    if any(value == str(Pubkey.default()) for value in identities.values()):
+        raise ValueError("Default pool mint/vault identity")
+    if identities["base_mint"] != mint:
         raise ValueError("Pool base mint mismatch")
     return {
-        "base_mint": key(43),
-        "quote_mint": key(75),
-        "base_account": key(139),
-        "quote_account": key(171),
+        **identities,
         "creator_fee_recipient": key(211),
         "virtual_quote_reserves": int.from_bytes(raw[245:261], "little", signed=True)
         if len(raw) >= 261
