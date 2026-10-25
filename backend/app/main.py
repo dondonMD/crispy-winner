@@ -241,8 +241,16 @@ def create_app(settings=None, db_path=None):
 
 app = create_app()
 
-if __name__ == "__main__":
+
+def run_server():
     import uvicorn
 
     setup_logging()
-    uvicorn.run(app, host="127.0.0.1", port=int(os.getenv("RADAR_PORT", "8765")), access_log=False)
+    # Persistent dashboard SSE responses must not prevent lifespan cleanup forever.
+    # Only HTTP draining is bounded; engine evidence reconciliation still runs fully.
+    uvicorn.run(app, host="127.0.0.1", port=int(os.getenv("RADAR_PORT", "8765")),
+                access_log=False, timeout_graceful_shutdown=5)
+
+
+if __name__ == "__main__":
+    run_server()

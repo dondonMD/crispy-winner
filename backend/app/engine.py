@@ -781,8 +781,14 @@ class RadarEngine:
             try:
                 self.collector.close_prospective()
             finally:
-                await self.rpc.close()
-                await self.dex.close()
+                # A failed client close must not bypass the other client, durable
+                # shutdown accounting or database disposal. Re-raise after cleanup.
+                provider_close_failures = []
+                for provider in (self.rpc, self.dex):
+                    try:
+                        await provider.close()
+                    except Exception as exc:
+                        provider_close_failures.append(exc)
                 checkpoint_failure = None
                 try:
                     if not self.storage_stopped:
@@ -797,12 +803,15 @@ class RadarEngine:
                         recovery=self.recovery.snapshot(), queue=self.queue.snapshot(),
                         persistence_reconciliation=self.db.persistence_snapshot(),
                         checkpoint_complete=not self.storage_stopped and checkpoint_failure is None,
-                        checkpoint_failure=type(checkpoint_failure).__name__ if checkpoint_failure else None))
+                        checkpoint_failure=type(checkpoint_failure).__name__ if checkpoint_failure else None,
+                        provider_close_failures=[type(exc).__name__ for exc in provider_close_failures]))
                 finally:
                     self.db.engine.dispose()
                 if checkpoint_failure is not None:
                     # Receipt first, then preserve the caller-visible failure; never claim a clean checkpoint.
                     raise checkpoint_failure
+                if provider_close_failures:
+                    raise provider_close_failures[0]
 
     async def run_demo(self):
         from backend.app.demo import demo_events
