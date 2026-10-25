@@ -4,10 +4,12 @@ from collections import deque
 import asyncio
 import base64
 import binascii
+import errno
 import json
 import os
 import random
 import re
+import socket
 import struct
 import time
 from pathlib import Path
@@ -15,6 +17,7 @@ from typing import Any, Protocol
 from urllib.parse import urlsplit
 
 import websockets
+from websockets.exceptions import ConnectionClosed, InvalidHandshake
 from solders.pubkey import Pubkey
 from solders.signature import Signature
 
@@ -38,6 +41,24 @@ FAILURE_REASONS = (
     "truncated", "unsupported_layout", "invalid_bool", "invalid_string", "invalid_pubkey",
     "invalid_timestamp_value", "invocation_framing", "invalid_encoding", "outer_notification", "other",
 )
+# Fixed cardinality. No exception messages, close reasons, URLs or identities.
+TRANSPORT_FAILURES = (
+    "websocket_close", "ping_timeout", "receive_timeout", "subscription_timeout",
+    "connect_timeout", "send_timeout", "timeout", "dns_error", "connection_error",
+    "os_error", "websocket_handshake", "websocket_error", "subscription_rejected",
+    "invalid_subscription_response", "value_error", "other_transport",
+)
+TRANSPORT_PHASES = ("connect", "subscribe_send", "subscription_ack", "subscription_validation", "receive", "backoff")
+TRANSPORT_DIAGNOSTIC_LIMIT = 32
+OS_ERROR_NUMBERS = frozenset(errno.errorcode) | frozenset(
+    value for name, value in vars(socket).items() if name.startswith("EAI_") and type(value) is int
+)
+
+
+def _diagnostic_number(value, allowed):
+    return int(value) if isinstance(value, int) and not isinstance(value, bool) and value in allowed else None
+
+
 FAILURE_EVENTS = tuple(e["name"] for e in SCHEMA["events"]) + ("unknown", "notification")
 TRADE_DISCRIMINATOR = next(k for k, v in EVENTS.items() if v == "TradeEvent")
 
@@ -218,6 +239,11 @@ class OnchainPumpDiscovery:
             "reconnect_level": 0,
             "subscriptions": 0,
             "transport_transitions": [],
+            "transport_failure_counts": dict.fromkeys(TRANSPORT_FAILURES, 0),
+            "transport_shutdowns": 0,
+            "transport_diagnostics": [],
+            "transport_diagnostics_limit": TRANSPORT_DIAGNOSTIC_LIMIT,
+            "transport_diagnostics_evicted": 0,
             "configuration_error": False,
         }
         try:
@@ -232,6 +258,54 @@ class OnchainPumpDiscovery:
         history = self.health["transport_transitions"]
         history.append({"at": time.time(), "state": state})
         del history[:-32]
+
+    def _record_transport(self, kind, phase, category, received=None, sent=None, number=None, status=None):
+        history = self.health["transport_diagnostics"]
+        history.append({
+            "at": time.time(), "kind": kind,
+            "phase": phase if phase in TRANSPORT_PHASES else "other",
+            "category": category,
+            "received_close_code": received, "sent_close_code": sent,
+            "errno": number, "http_status": status,
+        })
+        excess = max(0, len(history) - TRANSPORT_DIAGNOSTIC_LIMIT)
+        self.health["transport_diagnostics_evicted"] += excess
+        del history[:excess]
+
+    def record_transport_failure(self, exc, phase):
+        received = sent = number = status = None
+        if isinstance(exc, ConnectionClosed):
+            received = _diagnostic_number(getattr(exc.rcvd, "code", None), range(1000, 5000))
+            sent = _diagnostic_number(getattr(exc.sent, "code", None), range(1000, 5000))
+            # Recognize the library's local keepalive marker, never publish it.
+            # A peer's echoed reason/code alone doesn't establish a local ping timeout.
+            ping = (sent == 1011 and getattr(exc.sent, "reason", None) == "keepalive ping timeout"
+                    and (exc.rcvd is None or exc.rcvd_then_sent is False))
+            category = "ping_timeout" if ping else "websocket_close"
+        elif isinstance(exc, TimeoutError):
+            category = {"connect": "connect_timeout", "subscribe_send": "send_timeout",
+                        "subscription_ack": "subscription_timeout", "receive": "receive_timeout"}.get(phase, "timeout")
+        elif isinstance(exc, socket.gaierror):
+            category = "dns_error"
+        elif isinstance(exc, ConnectionError):
+            category = "connection_error"
+        elif isinstance(exc, OSError):
+            category = "os_error"
+        elif isinstance(exc, InvalidHandshake):
+            category = "websocket_handshake"
+            status = _diagnostic_number(getattr(getattr(exc, "response", None), "status_code",
+                                               getattr(exc, "status_code", None)), range(100, 600))
+        elif isinstance(exc, websockets.WebSocketException):
+            category = "websocket_error"
+        elif isinstance(exc, ValueError):
+            category = {"subscription_validation": "subscription_rejected",
+                        "subscription_ack": "invalid_subscription_response"}.get(phase, "value_error")
+        else:
+            category = "other_transport"
+        if isinstance(exc, OSError):
+            number = _diagnostic_number(exc.errno, OS_ERROR_NUMBERS)
+        self.health["transport_failure_counts"][category] += 1
+        self._record_transport("failure", phase, category, received, sent, number, status)
 
     def record_decode_failure(self, name, exc):
         name = name if name in FAILURE_EVENTS else "unknown"
@@ -460,8 +534,10 @@ class OnchainPumpDiscovery:
         if not self.health["enabled"]:
             return
         attempt = 0
+        phase = "connect"
         try:
             while True:
+                phase = "connect"
                 try:
                     self.health.update(attempted=True, last_attempt=time.time())
                     async with websockets.connect(
@@ -473,6 +549,7 @@ class OnchainPumpDiscovery:
                         ping_timeout=20,
                         close_timeout=5,
                     ) as ws:
+                        phase = "subscribe_send"
                         await ws.send(
                             json.dumps(
                                 {
@@ -483,7 +560,9 @@ class OnchainPumpDiscovery:
                                 }
                             )
                         )
+                        phase = "subscription_ack"
                         ack = json.loads(await asyncio.wait_for(ws.recv(), timeout=15))
+                        phase = "subscription_validation"
                         if (
                             not isinstance(ack, dict)
                             or ack.get("id") != 1
@@ -500,6 +579,7 @@ class OnchainPumpDiscovery:
                             last_success=time.time(),
                         )
                         self.record_transport_transition("CONNECTED")
+                        phase = "receive"
                         while True:
                             message = await asyncio.wait_for(ws.recv(), timeout=90)
                             if time.monotonic() - connected_at >= 60:
@@ -517,7 +597,8 @@ class OnchainPumpDiscovery:
                             except (ValueError, TypeError, AttributeError):
                                 self.global_gap("outer_notification")
                                 self.record_decode_failure("notification", DecodeFailure("outer_notification"))
-                except (OSError, websockets.WebSocketException, TimeoutError, ValueError):
+                except (OSError, websockets.WebSocketException, TimeoutError, ValueError) as exc:
+                    self.record_transport_failure(exc, phase)
                     self.record_transport_transition("DISCONNECTED")
                     self.global_gap("transport")
                     if self.health["connected_since"]:
@@ -533,7 +614,12 @@ class OnchainPumpDiscovery:
                     delay = min(60, 2 ** min(attempt, 6))
                     attempt = min(attempt + 1, 6)
                     self.health["reconnect_level"] = attempt
+                    phase = "backoff"
                     await asyncio.sleep(min(60, delay + random.uniform(0, delay * 0.2)))
+        except asyncio.CancelledError:
+            self.health["transport_shutdowns"] += 1
+            self._record_transport("shutdown", phase, "application_cancelled")
+            raise
         finally:
             self.global_gap("shutdown")
             self.health.update(connected=False, subscriptions=0, connected_since=0)
