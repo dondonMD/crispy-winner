@@ -75,7 +75,7 @@ def install_shutdown_watchdog(loop, interval=.05, ticks=100):
     return state
 
 
-async def validate(seconds, rate, recovery_rate, warm_events, output, profile_runtime=False, endurance=False, cleanup_state=None, diagnose_repro=False):
+async def validate(seconds, rate, recovery_rate, warm_events, output, profile_runtime=False, endurance=False, cleanup_state=None, diagnose_repro=False, diagnose_consumer=False):
     # scripts/profile.py must not shadow Python's profiling module in CLI mode.
     script_directory = str(Path(__file__).resolve().parent)
     if script_directory in sys.path:
@@ -230,9 +230,13 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
         turnover_stats: Counter = Counter()
         db_path = engine.db.path
         original_process = engine.process
+        from scripts.consumer_trace import ConsumerTrace
+        consumer = ConsumerTrace(engine, int(seconds * rate)) if diagnose_consumer else None
 
         def processed(event, now=None, **kwargs):
             start = time.perf_counter()
+            frame = consumer.start(event, start) if consumer is not None and kwargs.get("queued") else None
+            result = False
             if kwargs.get("queued") and event.kind == "trade":
                 processing_bins[int((start - started) // 10)] += 1
                 age = time.time() - event.ts
@@ -248,6 +252,8 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
                     committed_bins[int((time.perf_counter() - started) // 10)] += 1
                 return result
             finally:
+                if consumer is not None:
+                    consumer.finish(frame, bool(result and engine._event_persisted))
                 if kwargs.get("queued") and event.kind == "trade":
                     durations.append(time.perf_counter() - start)
 
@@ -277,6 +283,8 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
             trace.start(started)
         engine.accounting.last_tick = wall
         engine.running = True
+        if consumer is not None:
+            consumer.install()
         engine.tasks = [asyncio.create_task(engine.run_loop(), name="monitor"),
                         asyncio.create_task(engine.recovery.run(), name="synthetic-recovery")]
         stop = asyncio.Event()
@@ -301,6 +309,8 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
                 admitted[f"trade:{i}"] = ready
                 ready_bins[int((ready - started) // 10)] += 1
                 offset = scheduled_offset(i, rate, endurance)
+                if consumer is not None:
+                    consumer.ready(f"trade:{i}", ready, started + offset)
                 producer_lags.append(time.time() - (wall + offset))
                 # Always target the currently admitted set; turnover uses normal create admission.
                 active = list(engine.tokens) if endurance else None
@@ -395,6 +405,8 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
             try:
                 await engine.stop()
             finally:
+                if consumer is not None:
+                    consumer.close()
                 for obj, name, original in reversed(restore_wrappers):
                     setattr(obj, name, original)
                 setattr(engine.db.engine.dialect, "do_commit", original_commit)
@@ -420,6 +432,7 @@ async def validate(seconds, rate, recovery_rate, warm_events, output, profile_ru
             restart.update(elapsed_seconds=time.perf_counter() - restart_started,
                            storage_after_restart=storage_bytes(db_path))
         result = dict(synthetic=True, sql_counts=dict(sql_counts),
+            consumer_lifecycle=consumer.result() if consumer is not None else None,
             sqlite_commit=dict(**commit_totals, sample_limit=8192,
                 sampled_count=len(commit_samples), p50=percentile(commit_samples,.5),
                 p95=percentile(commit_samples,.95), p99=percentile(commit_samples,.99)), endurance=endurance, storage_retained=endurance,
@@ -468,6 +481,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--endurance", action="store_true", help="Opt-in synthetic bursts/turnover/delays, retained DB, <=1800s")
     parser.add_argument("--diagnose-repro", action="store_true", help="Bounded scheduling/environment diagnostics; no policy changes")
+    parser.add_argument("--diagnose-consumer", action="store_true", help="Opt-in phase/lifecycle diagnostic; no production scheduler changes")
     parser.add_argument("--profile-runtime", action="store_true", help="Separate diagnostic; profiled latency is not comparable")
     parser.add_argument("--seconds", type=int, default=210)
     parser.add_argument("--rate", type=int, default=15)
@@ -487,7 +501,7 @@ if __name__ == "__main__":
     async def run_cli():
         try:
             return await validate(args.seconds, args.rate, args.recovery_rate, args.warm_events,
-                                  args.output, args.profile_runtime, args.endurance, cleanup_state=cleanup, diagnose_repro=args.diagnose_repro)
+                                  args.output, args.profile_runtime, args.endurance, cleanup_state=cleanup, diagnose_repro=args.diagnose_repro, diagnose_consumer=args.diagnose_consumer)
         finally:
             cleanup["validation_returned_at"] = time.perf_counter()
             if "watchdog" not in cleanup:

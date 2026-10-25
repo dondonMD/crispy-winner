@@ -38,8 +38,15 @@ def test_synthetic_diagnostic_refuses_selected_cohort(tmp_path, monkeypatch):
 async def test_retained_endurance_shutdown_restart_and_delayed_provider(tmp_path):
     from scripts.validate_evidence_load import validate
     output = tmp_path / 'synthetic.json'
-    result = await validate(12, 5, .1, 0, output, endurance=True, diagnose_repro=True)
+    result = await validate(12, 5, .1, 0, output, endurance=True, diagnose_repro=True, diagnose_consumer=True)
     assert result['live_network_requests'] == 0 and not result['cohort_created']
+    consumer = result['consumer_lifecycle']
+    assert consumer['closed'] and consumer['pending_tracking'] == 0
+    for metric in ['ready_to_admission', 'admission_to_start', 'processing',
+                   'start_to_raw_commit_ack', 'start_to_durable_return']:
+        assert consumer['metrics'][metric]['count'] == 60
+    assert not consumer['counters'].get('diagnostic_tracking_overflow', 0)
+    assert consumer['cycles'] and consumer['metrics']['drain_interval']['count'] > 0
     repro = result['reproducibility']
     assert len(repro['workload_sha256']) == 64
     assert repro['sqlite'] == dict(journal_mode='wal', synchronous=1, busy_timeout=5000, wal_autocheckpoint=32, page_size=4096)
