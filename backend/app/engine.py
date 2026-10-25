@@ -98,6 +98,7 @@ class RadarEngine:
         self.last_handoff_sample = 0.0
         self.trade_observations = {"buy": 0, "sell": 0}
         self.trade_continuity: dict[str, Any] = {"global_resets": 0, "per_token_resets": 0,
+                                 "buffer_trade_evictions": 0, "buffer_expired_trade_evictions": 0,
                                  "per_token_reasons": dict.fromkeys(("decode", "stale", "queue", "buffer", "recovery", "processing", "resource"), 0)}
         self.out_of_order = 0
         self.duplicates = 0
@@ -488,8 +489,16 @@ class RadarEngine:
         if event.kind in ["trade", "market"]:
             if len(token.events) == token.events.maxlen and token.events:
                 oldest = token.events[0]
-                if oldest.kind == "trade" and event.ts - oldest.ts < 180:
-                    self.invalidate_token_trade_coverage(token.mint, reason="buffer", now=now)
+                if oldest.kind == "trade":
+                    self.trade_continuity["buffer_trade_evictions"] += 1
+                    token.buffer_loss_at = max(token.buffer_loss_at if token.buffer_loss_at is not None else 0, oldest.ts)
+                    # Both processing time and the existing event-time analysis matter.
+                    # Never infer deque order is timestamp order (late trades are allowed).
+                    if oldest.ts >= min(now, event.ts) - 180:
+                        self.invalidate_token_trade_coverage(token.mint, reason="buffer", now=now,
+                                                             known_loss_at=oldest.ts)
+                    else:
+                        self.trade_continuity["buffer_expired_trade_evictions"] += 1
             token.events.append(event)
         if event.price is not None:
             token.price = event.price
@@ -1111,7 +1120,9 @@ class RadarEngine:
         lost = False
         while len(token.events) > 100:
             removed = token.events.popleft()
-            lost |= removed.kind == "trade" and 0 <= now - removed.ts < 180
+            if removed.kind == "trade":
+                token.buffer_loss_at = max(token.buffer_loss_at if token.buffer_loss_at is not None else 0, removed.ts)
+            lost |= removed.kind == "trade" and removed.ts >= now - 180
         token.degraded = True
         if lost:
             self.invalidate_token_trade_coverage(token.mint, reason="resource", now=now)
@@ -1381,11 +1392,14 @@ class RadarEngine:
         if token and token.flow_venue == "PUMPSWAP":
             self.invalidate_token_trade_coverage(mint, now=now)
 
-    def invalidate_token_trade_coverage(self, mint, reason="decode", now=None):
+    def invalidate_token_trade_coverage(self, mint, reason="decode", now=None, known_loss_at=None):
         token = self.tokens.get(mint)
         if token is None:
             return
-        if token.flow_venue == "PUMPSWAP":
+        if (reason == "buffer" and type(known_loss_at) in (int, float)
+                and math.isfinite(known_loss_at) and known_loss_at >= 0):
+            token.buffer_loss_at = max(token.buffer_loss_at if token.buffer_loss_at is not None else 0, known_loss_at)
+        elif token.flow_venue == "PUMPSWAP":
             token.postgrad_gap = max(token.postgrad_gap, time.time() if now is None else now)
         else:
             token.trade_gap = max(token.trade_gap, time.time() if now is None else now)
@@ -1420,7 +1434,8 @@ class RadarEngine:
                     eligible = any(p.mint == candidate.mint for p in self.verified_flow_pools())
                     features["coverage_state"] = ("AWAITING ACK" if selected else "CAPACITY LIMITED" if eligible
                                                   else "VERIFIED POOL UNAVAILABLE")
-                features["continuity_valid"] = clean >= int(seconds) and not pending
+                features["continuity_valid"] = (clean >= int(seconds) and not pending
+                    and (candidate.buffer_loss_at is None or now - candidate.buffer_loss_at > int(seconds)))
             if "180" in candidate.features:
                 candidate.features["180"]["trade_evidence"] = self.trade_status(candidate, now)
 
@@ -1430,9 +1445,11 @@ class RadarEngine:
             if not verified or any(self.pumpswap.pools.get(p) != record or p not in self.pumpswap.since
                                    for p, record in verified.items()):
                 return 0
-            return min(self.pumpswap.coverage(token.mint, now), max(0, now - max(token.flow_epoch, token.postgrad_gap)))
+            return min(self.pumpswap.coverage(token.mint, now), max(0, now - max(
+                token.flow_epoch, token.postgrad_gap, token.buffer_loss_at or 0)))
         health = self.onchain.health
-        start = max(health["connected_since"], health["last_decode_gap"], token.trade_tracking_since, token.trade_gap)
+        start = max(health["connected_since"], health["last_decode_gap"], token.trade_tracking_since,
+                    token.trade_gap, token.buffer_loss_at or 0)
         return max(0, now - start) if health["connected"] else 0
 
     def trade_status(self, token, now=None):
@@ -1445,6 +1462,7 @@ class RadarEngine:
         ready = (self.trade_coverage_seconds(token, now) >= 180 if token.flow_venue == "PUMPSWAP"
                  else not self.recovery.overlaps(token, now) and self.onchain.health["connected"])
         if (ready and f.get("continuity_valid") and f.get("samples", 0) >= 3
+                and (token.buffer_loss_at is None or now - token.buffer_loss_at > 180)
                 and 0 <= now - token.last_trade <= self.settings.max_data_age_seconds):
             return "CURRENT"
         return "PARTIAL"

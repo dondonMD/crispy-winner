@@ -215,6 +215,9 @@ class Token:
     last_trade: float = 0
     verified_quote_mint: str = ""
     trade_gap: float = 0
+    # Exact timestamp of the most recent observed trade evicted from memory.
+    # Not a transport/recovery gap; inclusive windows remain incomplete until it ages out.
+    buffer_loss_at: float | None = None
     trade_tracking_since: float = 0
     last_price: float = 0
     last_liquidity: float = 0
