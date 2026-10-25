@@ -16,6 +16,12 @@ def main():
     parser.add_argument("--csv", type=Path)
     parser.add_argument("--horizon", type=int, default=300)
     args = parser.parse_args()
+    if args.command == "freeze-evidence":
+        parser.error(
+            "Evidence approval is disabled: retrospective evaluation cannot authorize entries. "
+            "Use evaluate for descriptive research; prospective approval requires a separately "
+            "validated protocol and independent approval control."
+        )
     load_dotenv(ROOT / ".env")
     settings = load_settings()
     engine = RadarEngine(settings)
@@ -31,22 +37,6 @@ def main():
         result = evaluate(
             engine.db, settings, "demo" if settings.mode == "DEMO" else "real", engine.version, args.horizon
         )
-        if args.command == "freeze-evidence":
-            holdout = result["holdout"]
-            validation = result["splits"]["validation"]
-            if (
-                holdout["status"] != "POSITIVE EXPECTANCY OBSERVED"
-                or validation["status"] != "POSITIVE EXPECTANCY OBSERVED"
-                or result["missing_outcomes"] > 0
-                or result["capacity_limited"]
-            ):
-                parser.error(
-                    "No positive independent validation/holdout evidence; cannot freeze approval (complete outcome coverage is required)"
-                )
-            engine.db.add(
-                "evidence",
-                {"version": engine.version, "mode": settings.mode, "holdout": holdout, "evaluation": result},
-            )
         engine.db.add("evaluation", result)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, allow_nan=False))

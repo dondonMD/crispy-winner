@@ -123,12 +123,11 @@ class RadarEngine:
         self.discovery_providers: list[DiscoveryProvider] = [self.onchain, self.pump]
         self.lab: dict = {"holdout": {"count": 0, "status": "UNVALIDATED"}, "sample_count": 0}
         self.approved_evidence: dict | None = None
-        for row in reversed(self.db.rows("evidence", limit=1000)):
-            if row.get("version") == self.version and (
-                (row.get("mode") == "DEMO") == (settings.mode == "DEMO")
-            ):
-                self.approved_evidence = row["holdout"]
-                break
+        # Persisted research rows are not an authorization capability. There is no
+        # independently verified prospective approval protocol yet. Leave ALL
+        # stored evidence unapproved (including legacy/flagged/DEMO rows), without
+        # rewriting history. Isolated historical replay may restore its recorded
+        # context explicitly; that is descriptive, never a startup approval route.
         self.curve_metrics = {
             "curve_hot_poll_requests": 0,
             "curve_background_poll_requests": 0,
