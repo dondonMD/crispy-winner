@@ -562,7 +562,8 @@ class OnchainPumpDiscovery:
                         event_id=f"{signature}:trade:{ordinal}",
                         evidence={"slot": slot, "event_ordinal": ordinal, "units_valid": currency != "unknown",
                                   "quote_mint": quote, "quote_source": "verified curve" if account_sol else "event",
-                                  "canonical_trade": fields},
+                                  "canonical_trade": fields,
+                                  **({"unit_failure_reason": unit_reason} if currency == "unknown" else {})},
                     )
                     if self.submit(event):
                         self.health["tracked_trades"] += 1

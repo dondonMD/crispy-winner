@@ -219,6 +219,7 @@ class Token:
     # Not a transport/recovery gap; inclusive windows remain incomplete until it ages out.
     buffer_loss_at: float | None = None
     trade_tracking_since: float = 0
+    operational_evidence: dict = field(default_factory=dict)  # Passive, current-instance counters only.
     last_price: float = 0
     last_liquidity: float = 0
     last_market_cap: float = 0

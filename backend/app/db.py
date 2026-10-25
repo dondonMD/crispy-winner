@@ -144,7 +144,28 @@ class Database:
             return json.loads(row.payload)
 
     def evidence_run(self, session, payload):
-        encoded = json.dumps(dict(payload, storage=self.storage_audit), allow_nan=False)
+        payload = dict(payload, storage=self.storage_audit)
+        if "token_evidence" in payload:
+            try:
+                json.dumps(payload["token_evidence"], allow_nan=False)
+            except (ValueError, TypeError, OverflowError):
+                payload["token_evidence"] = dict(version=1, status="UNAVAILABLE_ENCODING")
+        encoded = json.dumps(payload, allow_nan=False)
+        # Optional diagnostics must never crowd out existing essential accounting.
+        if len(encoded.encode()) > 57344 and "token_evidence" in payload:
+            bounded = json.loads(encoded)
+            diagnostic = bounded["token_evidence"]
+            diagnostic["omitted_record_budget"] = 0
+            for name in ("current", "pre_shutdown"):
+                section = diagnostic.get(name) or {}
+                while section.get("tokens") and len(encoded.encode()) > 57344:
+                    section["tokens"].pop()
+                    diagnostic["omitted_record_budget"] += 1
+                    encoded = json.dumps(bounded, allow_nan=False)
+            if len(encoded.encode()) > 57344:
+                bounded["token_evidence"] = dict(version=1, at=diagnostic.get("at"),
+                    status="OMITTED_RECORD_BUDGET", omitted_record_budget=diagnostic["omitted_record_budget"])
+            encoded = json.dumps(bounded, allow_nan=False)
         if len(encoded.encode()) > 65536:
             raise StorageBudgetError("Operational receipt exceeds bounded size")
         with self.sessions.begin() as db:
@@ -441,6 +462,20 @@ class Database:
                     query = query.where(text("records.id NOT IN (SELECT signal_id FROM prospective_enrollments)"))
                 result = db.execute(query)
                 count += getattr(result, "rowcount", 0)
+        # Only the new optional projection expires; essential receipts remain intact.
+        # Fixed batch bounds cleanup writes. No paper/cohort/history rows are removed here.
+        from backend.app.token_receipts import RETENTION_DAYS
+        with self.sessions.begin() as db:
+            rows = db.scalars(select(EvidenceRun).where(
+                text("json_extract(payload, '$.token_evidence.current') IS NOT NULL"),
+                text("json_extract(payload, '$.token_evidence.at') < :cutoff")
+            ).params(cutoff=now - RETENTION_DAYS * 86400).limit(32)).all()
+            for row in rows:
+                payload = json.loads(row.payload)
+                old = payload["token_evidence"]
+                payload["token_evidence"] = dict(version=1, status="EXPIRED", at=now,
+                    original_at=old.get("at"), reason="DIAGNOSTIC_RETENTION")
+                row.payload = json.dumps(payload, allow_nan=False)
         with self.engine.connect() as conn:
             conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
         return count

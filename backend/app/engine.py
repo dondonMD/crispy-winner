@@ -24,6 +24,7 @@ from backend.app.providers import DexScreenerProvider, PumpPortalProvider, Solan
 from backend.app.truncation import TruncationRecovery
 from backend.app.pumpswap import PumpSwapFlow, VerifiedPool
 from backend.app.resources import ResourceMonitor
+from backend.app import token_receipts
 from backend.app.evidence_pipeline import EventAccounting
 from backend.app.intelligence import Intelligence
 from backend.app.handoff import HandoffTrace
@@ -100,6 +101,11 @@ class RadarEngine:
         self.trade_continuity: dict[str, Any] = {"global_resets": 0, "per_token_resets": 0,
                                  "buffer_trade_evictions": 0, "buffer_expired_trade_evictions": 0,
                                  "per_token_reasons": dict.fromkeys(("decode", "stale", "queue", "buffer", "recovery", "processing", "resource"), 0)}
+        self.token_diagnostic_errors = 0
+        self.token_diagnostic_global = {"LIVE": 0, "SHUTDOWN": 0}
+        self.token_diagnostic_retired = 0
+        self._diagnostic_shutdown = False
+        self._diagnostic_pre_shutdown = None
         self.out_of_order = 0
         self.duplicates = 0
         self.rejected_payloads = 0
@@ -312,6 +318,7 @@ class RadarEngine:
                 return None
             if State.EXPIRED in TRANSITIONS[weakest.state]:
                 self.transition(weakest, State.EXPIRED, "Evicted by stronger/newer candidate", event.ts)
+            self.token_diagnostic_retired = min(token_receipts.MAX_COUNT, self.token_diagnostic_retired + 1)
             del self.tokens[weakest.mint]
         token = Token(event.mint, event.name, event.symbol, event.ts, event.creator)
         token.events = deque(maxlen=self.settings.max_events)
@@ -403,6 +410,7 @@ class RadarEngine:
                     return False
         if not recovered_migration and abs(now - event.ts) > self.settings.max_data_age_seconds:
             if event.kind == "trade" and event.mint in self.tokens:
+                self.record_token_diagnostic(token_receipts.stale, self.tokens[event.mint], event.ts, now)
                 self.invalidate_token_trade_coverage(event.mint, reason="stale", now=now)
             self.rejected_payloads += 1
             self._process_reason = "stale"
@@ -490,6 +498,7 @@ class RadarEngine:
             if len(token.events) == token.events.maxlen and token.events:
                 oldest = token.events[0]
                 if oldest.kind == "trade":
+                    self.record_token_diagnostic(token_receipts.increment, token.operational_evidence, "buffer_evictions")
                     self.trade_continuity["buffer_trade_evictions"] += 1
                     token.buffer_loss_at = max(token.buffer_loss_at if token.buffer_loss_at is not None else 0, oldest.ts)
                     # Both processing time and the existing event-time analysis matter.
@@ -753,6 +762,8 @@ class RadarEngine:
 
     async def stop(self):
         self.running = False
+        self._diagnostic_pre_shutdown = self.token_evidence_receipt(time.time())["current"]
+        self._diagnostic_shutdown = True
         previous_global_resets = self.trade_continuity["global_resets"]
         try:
             # Snapshot acquisition quality before intentional socket cancellation.
@@ -804,7 +815,8 @@ class RadarEngine:
                         persistence_reconciliation=self.db.persistence_snapshot(),
                         checkpoint_complete=not self.storage_stopped and checkpoint_failure is None,
                         checkpoint_failure=type(checkpoint_failure).__name__ if checkpoint_failure else None,
-                        provider_close_failures=[type(exc).__name__ for exc in provider_close_failures]))
+                        provider_close_failures=[type(exc).__name__ for exc in provider_close_failures],
+                        token_evidence=self.token_evidence_receipt(time.time())))
                 finally:
                     self.db.engine.dispose()
                 if checkpoint_failure is not None:
@@ -904,6 +916,7 @@ class RadarEngine:
                 deferred += 1
                 continue
             self.transition(token, State.EXPIRED, "Inactive candidate expired", now)
+            self.token_diagnostic_retired = min(token_receipts.MAX_COUNT, self.token_diagnostic_retired + 1)
             del self.tokens[token.mint]
             self.expiry_metrics["inactive_expirations"] += 1
         # Current gauge, not four duplicate deferrals per second per candidate.
@@ -1180,7 +1193,8 @@ class RadarEngine:
                     self.last_audit = now
                     self.db.evidence_run(self.session, dict(status="RUNNING", at=now,
                         accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity,
-                        persistence_reconciliation=self.db.persistence_snapshot()))
+                        persistence_reconciliation=self.db.persistence_snapshot(),
+                        token_evidence=self.token_evidence_receipt(time.time())))
                 if self.metrics["resource_pressure"]:
                     self.alert("SYSTEM", "", "RESOURCE PRESSURE — reducing monitoring", now)
                     for token in self.tokens.values():
@@ -1210,7 +1224,8 @@ class RadarEngine:
                 self.running = False
                 self.invalidate_trade_coverage()
                 self.db.evidence_run(self.session, dict(status="STORAGE_STOP", at=time.time(),
-                    accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity))
+                    accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity,
+                    token_evidence=self.token_evidence_receipt(time.time())))
                 return
             except CohortIntegrityError:
                 self.running = False
@@ -1412,6 +1427,8 @@ class RadarEngine:
             token.postgrad_gap = max(token.postgrad_gap, time.time() if now is None else now)
         else:
             token.trade_gap = max(token.trade_gap, time.time() if now is None else now)
+        self.record_token_diagnostic(token_receipts.reset, token, reason,
+                                     time.time() if now is None else now, self._diagnostic_shutdown)
         self.trade_continuity["per_token_resets"] += 1
         reason = reason if reason in self.trade_continuity["per_token_reasons"] else "decode"
         self.trade_continuity["per_token_reasons"][reason] += 1
@@ -1421,6 +1438,8 @@ class RadarEngine:
 
     def invalidate_trade_coverage(self):
         # Only transport or unassignable event loss reaches this callback.
+        phase = "SHUTDOWN" if self._diagnostic_shutdown else "LIVE"
+        self.record_token_diagnostic(token_receipts.increment, self.token_diagnostic_global, phase)
         self.trade_continuity["global_resets"] += 1
         for token in self.tokens.values():
             if token.flow_venue == "PUMPSWAP":
@@ -1460,6 +1479,23 @@ class RadarEngine:
         start = max(health["connected_since"], health["last_decode_gap"], token.trade_tracking_since,
                     token.trade_gap, token.buffer_loss_at or 0)
         return max(0, now - start) if health["connected"] else 0
+
+    def record_token_diagnostic(self, callback, *args):
+        try:
+            callback(*args)
+        except Exception:
+            self.token_diagnostic_errors = min(token_receipts.MAX_COUNT, self.token_diagnostic_errors + 1)
+
+    def token_evidence_receipt(self, now):
+        try:
+            current = token_receipts.section(self, now, "SHUTDOWN" if self._diagnostic_shutdown else "LIVE")
+        except Exception:
+            # Diagnostic failure is explicit and cannot upgrade market evidence or
+            # prevent the existing core accounting/cleanup from being persisted.
+            self.token_diagnostic_errors = min(token_receipts.MAX_COUNT, self.token_diagnostic_errors + 1)
+            current = dict(at=now, status="UNAVAILABLE", errors=self.token_diagnostic_errors,
+                           tracked_tokens=len(self.tokens), tokens=[], omitted_error=len(self.tokens))
+        return dict(version=1, at=now, current=current, pre_shutdown=self._diagnostic_pre_shutdown)
 
     def trade_status(self, token, now=None):
         now = time.time() if now is None else now
