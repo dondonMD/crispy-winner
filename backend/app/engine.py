@@ -205,6 +205,13 @@ class RadarEngine:
             token.events = deque(maxlen=self.settings.max_events)
             self.tokens[token.mint] = token
 
+    def manual_mints(self):
+        intelligence = getattr(self, "intelligence", None)
+        if intelligence is None:
+            return []
+        positions = sorted(intelligence.journal.positions.values(), key=lambda p: (p["opened_at"], p["mint"]))
+        return list(dict.fromkeys(p["mint"] for p in positions))
+
     def deep_mints(self):
         # New launches get a temporary activity audition. No holder scans for all discovery.
         eligible = [t for t in self.tokens.values() if t.state not in [State.REJECTED, State.EXPIRED]]
@@ -224,7 +231,8 @@ class RadarEngine:
         )
         protected = list(self.paper.state["positions"])
         protected += [m for m, p in self.paper.state["pending"].items() if p.get("action") == "entry"]
-        protected = [m for m in protected if m in self.tokens]
+        protected += [m for m in self.manual_mints() if m in self.tokens and self.tokens[m].state != State.EXPIRED]
+        protected = list(dict.fromkeys(m for m in protected if m in self.tokens))
         ranked = protected + [t.mint for t in eligible if t.mint not in protected]
         return ranked[: max(1, limit)]
 
@@ -257,8 +265,8 @@ class RadarEngine:
         self.queue.trade_gaps.clear()
         return accepted
 
-    def alert(self, level, mint, message, now):
-        key = (level, mint)
+    def alert(self, level, mint, message, now, dedup_tag=None):
+        key = (level, mint, dedup_tag) if dedup_tag is not None else (level, mint)
         if now - self.alert_times.get(key, -1000) < 30:
             return
         self.alert_times[key] = now
@@ -293,7 +301,8 @@ class RadarEngine:
         if self.metrics.get("resource_pressure") or self.metrics.get("storage_full"):
             return None
         if len(self.tokens) >= self.settings.max_candidates:
-            unprotected = [t for t in self.tokens.values() if t.mint not in self.paper.state["positions"]]
+            unprotected = [t for t in self.tokens.values() if t.mint not in self.paper.state["positions"]
+                           and t.mint not in self.manual_mints()]
             if not unprotected:
                 return None
             weakest = min(unprotected, key=lambda t: (t.priority(), t.created))
@@ -860,11 +869,13 @@ class RadarEngine:
 
     def expire_inactive_candidates(self, now):
         hot = set(self.deep_mints())
+        manual = set(self.manual_mints())
         background_rank = self.background_expiry_ranks(hot)
         deferred = 0
         for token in list(self.tokens.values()):
             if (
                 token.mint in self.paper.state["positions"]
+                or token.mint in manual
                 or self.paper.state["pending"].get(token.mint, {}).get("action") == "entry"
                 or State.EXPIRED not in TRANSITIONS[token.state]
             ):

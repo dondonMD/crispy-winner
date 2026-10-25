@@ -10,6 +10,10 @@ export function CopyMint({mint}:{mint:string}){
  async function copy(){try{await navigator.clipboard.writeText(mint);setStatus('Copied');setFallback(false);setTimeout(()=>setStatus(''),2500);}catch{setStatus('Copy unavailable — select the mint below');setFallback(true);}}
  return <div className="copy-mint"><button className="subtle" onClick={()=>void copy()} aria-label={`Copy mint for ${mint}`}>Copy mint</button><span role="status">{status}</span>{fallback&&<input aria-label="Mint to copy manually" readOnly value={mint} onFocus={e=>e.target.select()}/>}</div>;
 }
+export function ManualTradingLinks({mint}:{mint:string}){
+ const valid=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint);
+ return <p><a href="https://fomo.family/" target="_blank" rel="noopener noreferrer">Open FOMO · search the copied mint ↗</a>{valid&&<> · <a href={`https://pump.fun/coin/${encodeURIComponent(mint)}`} target="_blank" rel="noopener noreferrer">Inspect exact mint on Pump.fun ↗</a></>}<small>External manual action only. A FOMO token deep link is not verified.</small></p>;
+}
 const labels:Record<string,string>={UNAVAILABLE:'Unavailable',CURRENT:'Current'};
 function EvidenceList({title,items}:{title:string;items:string[]}){return items.length?<div><h4>{title}</h4><ul className="reasons">{items.map((text,i)=><li key={i}>{text}</li>)}</ul></div>:null;}
 export function CompanionCard({token,onSelect,detail=false}:{token:CompanionToken;onSelect?:(mint:string)=>void;detail?:boolean}){

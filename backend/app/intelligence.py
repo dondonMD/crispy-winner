@@ -70,6 +70,7 @@ class Intelligence:
 
     def refresh_positions(self, now):
         self.exit_results = {}
+        hot = set(self.engine.deep_mints())
         for identity, position in self.journal.positions.items():
             token = self.engine.tokens.get(position["mint"])
             observed = self.journal.market_view(position["mint"], now)
@@ -83,19 +84,42 @@ class Intelligence:
                 mode="json"
             )
             previous = self.exit_actions.get(identity)
-            if (
-                previous
-                and previous != result["action"]
-                and result["action"] in ["PROTECT_PROFIT", "EXIT_RISK", "THESIS_INVALIDATED"]
-            ):
+            if (previous != result["action"] and result["action"] in [
+                "PROTECT_PROFIT", "EXIT_RISK", "THESIS_INVALIDATED", "MOMENTUM_DETERIORATING", "DATA_STALE"
+            ]):
                 self.engine.alert(
                     "MANUAL_POSITION",
                     position["mint"],
                     "Manual position: " + result["action"] + " — review externally",
                     now,
+                    dedup_tag=identity + ":" + result["action"],
                 )
             self.exit_actions[identity] = result["action"]
-            self.exit_results[identity] = {**position, "exit": result}
+            missing = []
+            if token is None:
+                missing.append("Token is not actively tracked; no automatic readmission or historical backfill")
+            else:
+                if token.mint not in hot:
+                    missing.append("Outside current deep-monitoring capacity")
+                if not self.engine.discovery_connected() or not self.engine.rpc.health["connected"]:
+                    missing.append("Discovery or account provider unavailable")
+                if projection.security_quality != "CURRENT":
+                    missing.append("Current verified security unavailable")
+                if projection.trade_evidence != "CURRENT":
+                    missing.append("Current continuous buyer-flow evidence unavailable")
+                if token.graduation is None and projection.dynamics.freshness != "CURRENT":
+                    missing.append("Current verified curve unavailable")
+                if token.graduation is not None and (not provider or provider["status"] != "CURRENT"):
+                    missing.append("Current post-migration market mark unavailable")
+            if result["mark"] is None:
+                missing.append("Current position price/mark unavailable")
+            if self.engine.metrics.get("resource_pressure") or self.engine.metrics.get("storage_full"):
+                missing.append("Resource/storage pressure reduces evidence coverage")
+            self.exit_results[identity] = {**position, "exit": result, "monitoring": {
+                "status": "MONITORING DEGRADED" if missing else "OBSERVING",
+                "reasons": missing, "observed_at": now,
+                "valid_until": now + self.engine.settings.max_data_age_seconds,
+            }}
         self.exit_actions = {
             key: value for key, value in self.exit_actions.items() if key in self.journal.positions
         }

@@ -111,6 +111,13 @@ class OpportunityResult(BaseModel):
     manual_execution_only: bool = True
     validated_edge: bool = False
     research_version: str
+    observed_at: float | None = None
+    curve_observed_at: float | None = None
+    trade_observed_at: float | None = None
+    security_observed_at: float | None = None
+    trade_coverage_seconds: float | None = None
+    entry_review_eligible: bool = False
+    review_valid_until: float | None = None
 
 
 def current(stamp, now, ttl):
@@ -318,6 +325,16 @@ def opportunity_view(
         if action not in [OpportunityAction.AVOID, OpportunityAction.DATA_LIMITED]
         else 0
     )
+    # Presentation only. Never changes the research action or strict approval.
+    review = bool(action == OpportunityAction.EARLY_OPPORTUNITY and not hard and not token.degraded
+                  and token.graduation is None and d.current is not None and d.current < 85
+                  and token.state in (State.WATCHING, State.MATURING, State.NEAR_GRADUATION)
+                  and security == "CURRENT" and trade and bool(token.creator)
+                  and sec.get("creator_pct") is not None
+                  and all(isinstance(sec.get(key), (int, float)) and not isinstance(sec.get(key), bool)
+                          and math.isfinite(sec[key]) and 0 <= sec[key] <= limit
+                          for key, limit in (("top_1_independent_pct", settings.max_top1_pct),
+                                             ("top_5_independent_pct", settings.max_top5_pct))))
     return OpportunityResult(
         action=action,
         attention="HIGH"
@@ -355,4 +372,14 @@ def opportunity_view(
             "Loss of current lifecycle/security/market evidence",
         ],
         research_version=cfg.version,
+        observed_at=now,
+        curve_observed_at=token.last_curve or None,
+        trade_observed_at=token.last_trade or None,
+        security_observed_at=sec.get("last_updated") or None,
+        trade_coverage_seconds=features.get("coverage_seconds"),
+        entry_review_eligible=review,
+        review_valid_until=min(now + settings.max_data_age_seconds,
+                              token.last_curve + cfg.curve_fresh_seconds,
+                              token.last_trade + settings.max_data_age_seconds,
+                              sec.get("last_updated", 0) + settings.security_ttl_seconds) if review else None,
     )
