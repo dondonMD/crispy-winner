@@ -6,12 +6,14 @@ import base64
 import binascii
 import errno
 import json
+import math
 import os
 import random
 import re
 import socket
 import struct
 import time
+from time import perf_counter
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urlsplit
@@ -53,6 +55,13 @@ TRANSPORT_DIAGNOSTIC_LIMIT = 32
 OS_ERROR_NUMBERS = frozenset(errno.errorcode) | frozenset(
     value for name, value in vars(socket).items() if name.startswith("EAI_") and type(value) is int
 )
+PERFORMANCE_BUCKETS = (0.0001, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 20)
+PERFORMANCE_SAMPLE_LIMIT = 32
+
+
+def _duration_summary():
+    return {"count": 0, "total_seconds": 0.0, "max_seconds": 0.0,
+            "last_seconds": None, "bucket_counts": [0] * (len(PERFORMANCE_BUCKETS) + 1)}
 
 
 def _diagnostic_number(value, allowed):
@@ -245,6 +254,17 @@ class OnchainPumpDiscovery:
             "transport_diagnostics_limit": TRANSPORT_DIAGNOSTIC_LIMIT,
             "transport_diagnostics_evicted": 0,
             "configuration_error": False,
+            "passive_performance": {
+                "bucket_upper_seconds": list(PERFORMANCE_BUCKETS) + ["INF"],
+                "durations": {name: _duration_summary() for name in (
+                    "json_decode", "message_processing", "event_loop_lag", "completed_rtt_snapshots")},
+                "sample_interval_seconds": 1,
+                "recent_limit": PERFORMANCE_SAMPLE_LIMIT, "recent": [], "recent_evicted": 0,
+                "unavailable_rtt_snapshots": 0,
+                "receive_frame_depth": "UNAVAILABLE_SUPPORTED_INTERFACE",
+                "read_pause_duration": "UNAVAILABLE_SUPPORTED_INTERFACE",
+                "outstanding_ping_age": "UNAVAILABLE_SUPPORTED_INTERFACE",
+            },
         }
         try:
             parsed = urlsplit(self.url)
@@ -253,6 +273,63 @@ class OnchainPumpDiscovery:
         except ValueError:
             self.health["configuration_error"] = True
             self.health["enabled"] = False
+
+    def record_performance_duration(self, name, seconds):
+        # Fixed names/numeric values only; never accept diagnostic text or payloads.
+        summaries = self.health["passive_performance"]["durations"]
+        if (name not in summaries or type(seconds) not in (int, float)
+                or not math.isfinite(seconds) or seconds < 0):
+            return
+        summary = summaries[name]
+        summary["count"] += 1
+        summary["total_seconds"] += seconds
+        summary["max_seconds"] = max(summary["max_seconds"], seconds)
+        summary["last_seconds"] = seconds
+        bucket = next((i for i, edge in enumerate(PERFORMANCE_BUCKETS) if seconds <= edge),
+                      len(PERFORMANCE_BUCKETS))
+        summary["bucket_counts"][bucket] += 1
+
+    def start_performance_sampler(self, get_socket):
+        """One cancellable timer, no task/socket/ping and no catch-up callbacks."""
+        loop = asyncio.get_running_loop()
+        stopped = False
+        handle = None
+
+        def sample(expected):
+            nonlocal handle
+            if stopped:
+                return
+            now = loop.time()
+            lag = max(0, now - expected)
+            self.record_performance_duration("event_loop_lag", lag)
+            ws = get_socket()
+            # Documented last-completed RTT. Repeated snapshots aren't unique pongs.
+            latency = getattr(ws, "latency", None) if ws is not None else None
+            if (not isinstance(latency, (float, int)) or isinstance(latency, bool)
+                    or not math.isfinite(latency) or latency <= 0):
+                latency = None  # Initial library zero isn't a measured zero-latency pong.
+            metrics = self.health["passive_performance"]
+            if latency is None:
+                metrics["unavailable_rtt_snapshots"] += 1
+            else:
+                self.record_performance_duration("completed_rtt_snapshots", latency)
+            metrics["recent"].append({"at": time.time(), "loop_lag_seconds": lag,
+                                      "last_completed_rtt_seconds": latency})
+            excess = max(0, len(metrics["recent"]) - PERFORMANCE_SAMPLE_LIMIT)
+            metrics["recent_evicted"] += excess
+            del metrics["recent"][:excess]
+            # Schedule from completion, never create an unbounded catch-up backlog.
+            expected = loop.time() + 1
+            handle = loop.call_later(1, sample, expected)
+
+        def stop():
+            nonlocal stopped
+            stopped = True
+            if handle is not None:
+                handle.cancel()
+
+        handle = loop.call_later(1, sample, loop.time() + 1)
+        return stop
 
     def record_transport_transition(self, state):
         history = self.health["transport_transitions"]
@@ -535,6 +612,8 @@ class OnchainPumpDiscovery:
             return
         attempt = 0
         phase = "connect"
+        diagnostic_ws = None
+        stop_sampler = self.start_performance_sampler(lambda: diagnostic_ws)
         try:
             while True:
                 phase = "connect"
@@ -579,14 +658,20 @@ class OnchainPumpDiscovery:
                             last_success=time.time(),
                         )
                         self.record_transport_transition("CONNECTED")
+                        diagnostic_ws = ws
                         phase = "receive"
                         while True:
                             message = await asyncio.wait_for(ws.recv(), timeout=90)
+                            processing_started = perf_counter()
                             if time.monotonic() - connected_at >= 60:
                                 attempt = 0
                                 self.health["reconnect_level"] = 0
                             try:
-                                payload = json.loads(message)
+                                decode_started = perf_counter()
+                                try:
+                                    payload = json.loads(message)
+                                finally:
+                                    self.record_performance_duration("json_decode", perf_counter() - decode_started)
                                 if (
                                     isinstance(payload, dict)
                                     and payload.get("params", {}).get("subscription") == subscription
@@ -597,7 +682,10 @@ class OnchainPumpDiscovery:
                             except (ValueError, TypeError, AttributeError):
                                 self.global_gap("outer_notification")
                                 self.record_decode_failure("notification", DecodeFailure("outer_notification"))
+                            finally:
+                                self.record_performance_duration("message_processing", perf_counter() - processing_started)
                 except (OSError, websockets.WebSocketException, TimeoutError, ValueError) as exc:
+                    diagnostic_ws = None
                     self.record_transport_failure(exc, phase)
                     self.record_transport_transition("DISCONNECTED")
                     self.global_gap("transport")
@@ -621,5 +709,6 @@ class OnchainPumpDiscovery:
             self._record_transport("shutdown", phase, "application_cancelled")
             raise
         finally:
+            stop_sampler()
             self.global_gap("shutdown")
             self.health.update(connected=False, subscriptions=0, connected_since=0)
