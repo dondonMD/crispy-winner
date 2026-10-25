@@ -2,6 +2,7 @@
 
 from collections import OrderedDict
 import json
+import math
 import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, field_validator, model_validator
@@ -42,6 +43,8 @@ class MarketInput(MintInput):
 
 class OpenPositionInput(MarketInput):
     amount_usd: FiniteFloat = Field(gt=0, le=1e6)
+    quantity_tokens: FiniteFloat | None = Field(default=None, gt=0, le=1e30)
+    actual_entry_fees_usd: FiniteFloat | None = Field(default=None, ge=0, le=1e6)
     opened_at: FiniteFloat | None = Field(default=None, ge=0)
     notes: str = Field(default="", max_length=1000)
     confirm: bool
@@ -58,6 +61,45 @@ class CashInput(ManualInput):
 
 class EconomicsInput(MintInput):
     amount_usd: FiniteFloat = Field(gt=0, le=1e6)
+
+
+def position_costs(position, price, liquidity, settings):
+    """Journal-only estimate; observed entry fees replace, never add to, entry model.
+
+    Amount means filled token notional EXCLUDING paid fees. Quantity is human
+    token units. Manual inputs remain unverified; no route/fill is established.
+    """
+    amount, entry_price = position["amount_usd"], position["entry_price_usd"]
+    if not entry_price or not price:
+        return None
+    estimator = TradeCostEstimator(settings)
+    quantity, paid = position.get("quantity_tokens"), position.get("actual_entry_fees_usd")
+    if quantity is None and paid is None:
+        # Historical journals retain their explicitly estimated fee model.
+        return estimator.estimate(amount, liquidity, (price / entry_price - 1) * 100)
+    if (quantity is None or paid is None
+            or not math.isclose(quantity * entry_price, amount, rel_tol=0, abs_tol=0.01)):
+        return None  # Partial/inconsistent receipts must not manufacture P&L.
+    gross_value = quantity * price
+    costs = estimator.estimate(amount, liquidity, (gross_value / amount - 1) * 100)
+    if costs is None:
+        return None
+    total = paid + costs["exit_cost_usd"]
+    gross = gross_value - amount
+    return {
+        **costs,
+        "entry": {"actual_recorded_fees_usd": paid},
+        "entry_cost_usd": paid,
+        "entry_cost_basis": "USER_REPORTED_ACTUAL",
+        "round_trip_cost_usd": total,
+        "round_trip_cost_pct": 100 * total / amount,
+        "gross_pnl_usd": gross,
+        "net_pnl_usd": gross - total,
+        "net_return_pct": 100 * (gross - total) / amount,
+        "estimated_price_impact_pct": costs["exit"]["price_impact_pct"],
+        "fee_verified": False,
+        "method": "User-reported fill/entry fees; exit remains balanced-pool model plus reserves",
+    }
 
 
 def manual_economics(settings, cash, amount, token, now):
@@ -177,6 +219,9 @@ class ManualJournal:
             "mint": value.mint,
             "status": "OPEN",
             "amount_usd": value.amount_usd,
+            "quantity_tokens": value.quantity_tokens,
+            "actual_entry_fees_usd": value.actual_entry_fees_usd,
+            "entry_fill_source": "MANUAL USER REPORT — UNVERIFIED",
             "opened_at": value.opened_at or now,
             "entry_price_usd": value.price_usd,
             "entry_market_cap_usd": value.market_cap_usd,

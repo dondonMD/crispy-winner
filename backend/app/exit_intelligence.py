@@ -4,7 +4,7 @@ from enum import StrEnum
 import math
 from pydantic import BaseModel
 
-from backend.app.economics import TradeCostEstimator
+from backend.app.manual import position_costs
 from backend.app.opportunity import current
 
 
@@ -67,8 +67,8 @@ def exit_view(position, token, opportunity, settings, cfg, now):
         else None
     )
     costs = (
-        TradeCostEstimator(settings).estimate(position["amount_usd"], liquidity, price_move)
-        if price_move is not None and price_move > -100
+        position_costs(position, mark["value"], liquidity, settings)
+        if mark is not None and price_move is not None and price_move > -100
         else None
     )
     reasons, invalid = [], []
@@ -141,6 +141,7 @@ def exit_view(position, token, opportunity, settings, cfg, now):
             "Unvalidated decision support; closing the journal sends no transaction.",
             "Market-cap change is a proxy, not token return or P&L.",
             "Costs use a current balanced-pool approximation, not an execution quote.",
+            "Recorded fills/fees are user-reported, not independently verified. Complete quantity/price/notional must agree within $0.01 for a recorded-fill estimate; blank fees are unknown. Entries without either fill field retain explicitly modeled fees.",
         ],
         mark=mark,
         peak_mark=peak,
