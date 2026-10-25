@@ -70,6 +70,11 @@ class TradeCostEstimator:
         if self.estimate(position, liquidity) is None:
             return None
         low, high = 0.0, 1000.0
+        upper = self.estimate(position, liquidity, high)
+        if upper is None or not math.isfinite(upper["net_pnl_usd"]) or upper["net_pnl_usd"] < 0:
+            # The search ceiling is not a root. Unknown/unbracketed economics
+            # must not be displayed as an achieved break-even price movement.
+            return None
         for _ in range(45):
             mid = (low + high) / 2
             if self.estimate(position, liquidity, mid)["net_pnl_usd"] >= 0:
