@@ -2,8 +2,9 @@
 
 from copy import deepcopy
 
-from backend.app.domain import State, Token
-from backend.app.opportunity import opportunity_view
+from backend.app.domain import State, Token, MarketEvent
+from backend.app.features import calculate_features
+from backend.app.opportunity import opportunity_view, early_market_view, curve_dynamics
 from backend.app.exit_intelligence import exit_view
 
 
@@ -43,6 +44,19 @@ def examples(settings, cfg, now):
         result = opportunity_view(
             t, settings.model_copy(update={"trade_stream_enabled": True}), now, cfg
         ).model_dump(mode="json")
+        # Independent synthetic observations for the new display; original demo
+        # tokens/exit rules/research classifications remain unchanged.
+        early = deepcopy(t)
+        early.trade_tracking_since = now - 65
+        early.last_analysis = now
+        for j in range(1, 60, 3):
+            early.events.append(MarketEvent(mint=early.mint, ts=now-j, kind="trade", source="DEMO",
+                event_id=f"demo-early:{i}:{j}", side="sell" if label == "DEVELOPING" else "buy",
+                wallet=f"demo-buyer-{j}", volume=1+j/13, currency="SOL"))
+        early.last_trade = now-1
+        early.features = calculate_features(early, now)
+        result["early_market"] = early_market_view(early, settings, cfg, now,
+            curve_dynamics(early, now, cfg), 65, {s: False for s in (10, 30, 60, 180)})
         opportunities.append({"mint": t.mint, "name": t.name, "symbol": "DEMO", "simulated": True, **result})
     positions = []
     for label, mark_value, peak in [

@@ -5,7 +5,7 @@ import time
 from backend.app.domain import Token
 from backend.app.exit_intelligence import exit_view
 from backend.app.manual import ManualJournal
-from backend.app.opportunity import load_intelligence_settings, opportunity_view, provider_market
+from backend.app.opportunity import load_intelligence_settings, opportunity_view, provider_market, early_market_view
 from backend.app.opportunity_research import OpportunityResearch
 
 
@@ -26,7 +26,14 @@ class Intelligence:
             observed = self.journal.market_view(token.mint, now)
             if observed and (observed["status"] == "CURRENT" or market["status"] != "CURRENT"):
                 market = observed
-        return opportunity_view(token, self.engine.settings, now, self.cfg, market)
+        result = opportunity_view(token, self.engine.settings, now, self.cfg, market)
+        # The new display/manual context is not a retrospective change to v1
+        # research enrollment. Also avoid adding it to the per-trade research callback.
+        if manual:
+            result.early_market = early_market_view(token, self.engine.settings, self.cfg, now, result.dynamics,
+                self.engine.trade_coverage_seconds(token, now),
+                {s: self.engine.recovery.overlaps(token, now, s) for s in (10, 30, 60, 180)})
+        return result
 
     def observe(self, token, now, acquisition=True):
         if (
@@ -115,7 +122,7 @@ class Intelligence:
                 missing.append("Current position price/mark unavailable")
             if self.engine.metrics.get("resource_pressure") or self.engine.metrics.get("storage_full"):
                 missing.append("Resource/storage pressure reduces evidence coverage")
-            self.exit_results[identity] = {**position, "exit": result, "monitoring": {
+            self.exit_results[identity] = {**position, "exit": result, "early_market": projection.early_market, "monitoring": {
                 "status": "MONITORING DEGRADED" if missing else "OBSERVING",
                 "reasons": missing, "observed_at": now,
                 "valid_until": now + self.engine.settings.max_data_age_seconds,

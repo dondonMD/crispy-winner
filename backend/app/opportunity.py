@@ -5,6 +5,8 @@ from functools import lru_cache
 import hashlib
 import json
 import math
+import inspect
+from typing import Any
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -116,6 +118,7 @@ class OpportunityResult(BaseModel):
     trade_observed_at: float | None = None
     security_observed_at: float | None = None
     trade_coverage_seconds: float | None = None
+    early_market: dict | None = None
     entry_review_eligible: bool = False
     review_valid_until: float | None = None
 
@@ -383,3 +386,223 @@ def opportunity_view(
                               token.last_trade + settings.max_data_age_seconds,
                               sec.get("last_updated", 0) + settings.security_ttl_seconds) if review else None,
     )
+
+
+# Separate descriptive research policy. Does not change opportunity-v1 or entry gates.
+EARLY_MARKET_POLICY: dict[str, Any] = dict(windows=[10, 30, 60, 180], min_samples=3, min_buyers=3,
+                           persistence_fraction=0.5, semantics='counts_then_consistent_amounts')
+
+
+def early_market_view(token, settings, cfg, now, dynamics, clean_seconds, pending):
+    """Bounded read-only interpretation over existing caches and retained observations.
+
+    Clean observed-window coverage never means CURRENT or executable. Amount-based estimates
+    are reused only with identical timestamp membership to the cached calculation.
+    """
+    clean_seconds = min(max(0, clean_seconds), max(0, now - max(
+        token.trade_tracking_since, token.trade_gap, token.postgrad_gap, token.buffer_loss_at or 0)))
+    events = list(token.events)  # Existing <=500 bound, no additional retained history.
+    # Snapshot canonical count fields once; reuse existing cached amount/cluster math.
+    observed = [(e.ts, e.side, e.wallet, e.currency) for e in events
+                if e.kind == 'trade' and 0 <= now-e.ts <= 180
+                and (e.source == 'Solana WSS' or settings.mode == 'DEMO' and e.source == 'DEMO')]
+    windows = {}
+    cache = getattr(token, '_feature_window_cache', {}).get('windows', {})
+    for seconds in EARLY_MARKET_POLICY['windows']:
+        trades = [e for e in observed if now-e[0] <= seconds]
+        f = token.features.get(str(seconds), {})
+        cached_key = cache.get(seconds, {}).get('key')
+        same = bool(cached_key and cached_key[0] == tuple(e[0] for e in trades))
+        same = same and f.get('samples') == len(trades)
+        currencies = {e[3] for e in trades}
+        units = bool(trades) and len(currencies) == 1 and currencies <= {'SOL', 'USDC'}
+        def metric(name):
+            value = f.get(name)
+            return value if (isinstance(value, (int, float)) and not isinstance(value, bool)
+                             and math.isfinite(value)) else None
+        buys = sum(e[1] == 'buy' for e in trades)
+        ready = clean_seconds >= seconds and not pending.get(seconds, True)
+        windows[str(seconds)] = dict(samples=len(trades), buys=buys, sells=len(trades)-buys,
+            coverage_seconds=min(seconds, max(0, clean_seconds)), complete=ready,
+            freshness='RECENT' if trades and current(max(e[0] for e in trades), now,
+                                                    settings.max_data_age_seconds) else 'STALE / ABSENT',
+            last_trade_age=now-max(e[0] for e in trades) if trades else None,
+            first_trade_age=now-min(e[0] for e in trades) if trades else None,
+            units_valid=units, currency=next(iter(currencies)) if units else None,
+            raw_unique_buyers=(f['raw_unique_buyers'] if same else
+                               len({e[2] for e in trades if e[1] == 'buy' and e[2]})),
+            independent_buyers=metric('estimated_independent_buyers') if same and units else None,
+            net_flow=metric('net_flow') if same and units else None,
+            flow_ratio=metric('flow_ratio') if same and units else None,
+            arrival_acceleration=metric('trade_acceleration') if same else None,
+            buying_persistence=metric('buy_pressure_persistence') if same and units else None,
+            whale_share=metric('whale_share') if same and units else None,
+            coordination_suspected=bool(f.get('cluster_evidence')) if same and units else None,
+            pending_recovery=pending.get(seconds, True),
+            limitations=([f'Incomplete {seconds}s continuity; retained samples only'] if not ready else [])
+                + ([] if units else ['Amount-weighted flow/coordination unavailable: unknown or mixed units'])
+                + ([] if same else ['Cached amount/breadth metrics unavailable for this exact membership']))
+    short = next((windows[str(s)] for s in (30, 10) if windows[str(s)]['complete']
+                  and windows[str(s)]['samples'] >= EARLY_MARKET_POLICY['min_samples']
+                  and windows[str(s)]['freshness'] == 'RECENT'), None)
+    medium = windows['60']
+    latest = windows['10']
+    missing = ['Executable buy/sell routes, actual interface costs and after-cost outcomes unverified']
+    warnings = []
+    evidence = []
+    if dynamics.freshness != 'CURRENT':
+        missing.append('Fresh independently verified curve observation unavailable')
+    if dynamics.samples < 3 or dynamics.coverage_seconds < cfg.progression_min_seconds:
+        missing.append('Timed curve progression/reversal history limited')
+    security_current = (token.security.get('data_quality') == 'VERIFIED'
+                        and current(token.security.get('last_updated', 0), now, settings.security_ttl_seconds))
+    distribution_known = bool(token.creator and all(
+        isinstance(token.security.get(key), (int, float)) and not isinstance(token.security.get(key), bool)
+        and math.isfinite(token.security[key]) and 0 <= token.security[key] <= 100
+        for key in ('creator_pct', 'top_1_independent_pct', 'top_5_independent_pct')))
+    if not security_current:
+        missing.append('Security UNKNOWN / STALE — loss and transfer restrictions not excluded')
+    if not distribution_known:
+        missing.append('Creator/holder concentration measurements incomplete; distribution safety unknown')
+    if token.liquidity is None or not current(token.last_liquidity, now, settings.max_data_age_seconds):
+        missing.append('Current provider liquidity unavailable; exit feasibility unknown')
+    prices = sorted({e.ts: e.price for e in events if e.kind == 'market' and e.source == 'DEX Screener'
+                     and e.currency == 'USD' and e.price and 0 <= now - e.ts <= 60}.items())
+    price = None
+    if len(prices) >= 3 and current(prices[-1][0], now, settings.max_data_age_seconds):
+        changes = [b[1]-a[1] for a, b in zip(prices, prices[1:])]
+        change_pct = (prices[-1][1]/prices[0][1]-1)*100
+        price = dict(source='DEX Screener displayed USD marks; not fills', samples=len(prices),
+            observed_at=prices[-1][0], change_pct=change_pct,
+            pattern='RISING SAMPLED MARKS' if all(x > 0 for x in changes) else
+                    'FALLING SAMPLED MARKS' if all(x < 0 for x in changes) else 'MIXED SAMPLED MARKS')
+        if not math.isfinite(change_pct):
+            price = None
+    if price is None:
+        missing.append('Timestamped provider price series unavailable; no chart/return pattern inferred')
+    creator_sell = any(e[1] == 'sell' and token.creator and e[2] == token.creator for e in observed)
+    invalid_distribution = any(token.security.get(key) is not None and (
+        not isinstance(token.security[key], (int, float)) or isinstance(token.security[key], bool)
+        or not math.isfinite(token.security[key]) or not 0 <= token.security[key] <= 100)
+        for key in ('creator_pct', 'top_1_independent_pct', 'top_5_independent_pct'))
+    concentration = any(isinstance(token.security.get(key), (int, float))
+                        and not isinstance(token.security.get(key), bool)
+                        and token.security[key] > limit
+                        for key, limit in (('top_1_independent_pct', settings.max_top1_pct),
+                                           ('top_5_independent_pct', settings.max_top5_pct)))
+    risks = []
+    if token.security.get('hard_failures'):
+        risks.append('Recorded hard security failure; inspect the existing security report')
+    if invalid_distribution:
+        risks.append('Invalid/nonfinite holder-distribution evidence')
+    if concentration:
+        risks.append('Known holder concentration exceeds the unchanged strategy limits')
+    if token.decision.get('decision') == 'REJECT' or token.state in (State.REJECTED, State.EXPIRED):
+        risks.append('Existing core rejection or rejected/expired lifecycle')
+    if creator_sell:
+        risks.append('Canonical creator sell direction observed; no unknown amount is inferred')
+    if token.disagreement:
+        risks.append('Recorded provider disagreement')
+    if token.degraded:
+        risks.append('Recorded evidence degradation')
+    hard = bool(risks)
+    coordinated = bool(short and short['coordination_suspected'])
+    label, direction = 'NEUTRAL / WAIT', 'NEUTRAL'
+    if hard:
+        label, direction = 'AVOID', 'RISK'
+        evidence.extend(risks)
+    elif (token.graduation is not None or token.decision.get('decision') == 'MISSED'
+          or dynamics.current is not None and dynamics.current >= 85):
+        label, direction = 'TOO EXTENDED', 'CAUTION'
+        evidence.append('Existing missed/extended assessment, post-graduation or >=85% high lifecycle region; not a claim of price growth')
+    elif not short or dynamics.freshness != 'CURRENT':
+        label = 'INSUFFICIENT DATA'
+        evidence.append('No fresh, clean 10s/30s count window with at least three retained canonical trades')
+    elif dynamics.retreat_pp is not None and dynamics.retreat_pp >= cfg.collapse_pp:
+        label, direction = 'BEARISH PRESSURE', 'BEARISH'
+        evidence.append('Verified curve retreat meets the existing collapse boundary; progression thesis is not intact')
+    elif coordinated:
+        label, direction = 'AVOID', 'RISK'
+        evidence.append('Suspected coordinated sizes/timing; not proof of common ownership; bullish reading withheld')
+    elif (short['sells'] > short['buys']
+          or short['net_flow'] is not None and short['net_flow'] < 0
+          or latest['complete'] and latest['samples'] >= 3
+          and latest['freshness'] == 'RECENT' and latest['sells'] > latest['buys']):
+        label, direction = 'BEARISH PRESSURE', 'BEARISH'
+        evidence.append('Observed sell dominance by count or consistent-unit net flow in a current clean short window')
+    elif (short['arrival_acceleration'] is not None and short['arrival_acceleration'] < 0
+          and medium['buys'] > short['buys']):
+        direction = 'CAUTION'
+        evidence.append('Buying exhaustion: recent arrival declined; earlier buying does not establish continuation')
+    elif short['buys'] > short['sells'] and short['raw_unique_buyers'] >= EARLY_MARKET_POLICY['min_buyers']:
+        if dynamics.retreat_pp is not None and dynamics.retreat_pp >= cfg.pullback_min_pp:
+            label, direction = 'PULLBACK WATCH', 'RECOVERING'
+            evidence.append('Verified curve retreat with renewed observed buying; not a price pullback claim')
+        elif (medium['complete'] and medium['units_valid'] and medium['independent_buyers'] is not None
+              and medium['independent_buyers'] >= EARLY_MARKET_POLICY['min_buyers']
+              and (medium['buying_persistence'] or 0) >= EARLY_MARKET_POLICY['persistence_fraction']
+              and (medium['net_flow'] or 0) > 0 and (short['arrival_acceleration'] or 0) >= 0):
+            label, direction = 'BULLISH DEVELOPING', 'BULLISH'
+            evidence.append('Clean 60s breadth, positive amount flow and buying across at least half of six bins')
+        else:
+            label, direction = 'EMERGING BULLISH', 'BULLISH'
+            evidence.append('Recent clean buy-count dominance across at least three observed buyer addresses')
+    else:
+        evidence.append('Mixed participation or buying exhaustion; no supported bullish continuation')
+    if not short:
+        missing.append('Fresh clean 10s/30s coverage with at least three canonical trades unavailable')
+    if short:
+        evidence.append(f"Recent window: {short['buys']} buys / {short['sells']} sells; "
+                        f"{short['raw_unique_buyers']} observed buyer addresses, not necessarily independent")
+        if not short['units_valid']:
+            missing.append('Amount-weighted flow, independent-buyer estimate and coordination model unavailable')
+    if price and price['change_pct'] > 0 and (not short or (short['net_flow'] or 0) <= 0):
+        warnings.append('Rising displayed price lacks supporting current amount-weighted buying flow')
+    if windows['180']['complete'] is False:
+        warnings.append('180s established evidence incomplete; short-window interpretation only')
+    eligible = bool(direction in ('BULLISH', 'RECOVERING') and short and not hard and not coordinated
+                    and token.graduation is None and dynamics.freshness == 'CURRENT'
+                    and token.state in (State.WATCHING, State.MATURING, State.NEAR_GRADUATION))
+    # Ordinal attention only, never expected return or probability.
+    rank = (3 if label == 'BULLISH DEVELOPING' else 2 if label == 'EMERGING BULLISH' else
+            1 if label == 'PULLBACK WATCH' else 0)
+    valid_until = min(now + min(EARLY_MARKET_POLICY['windows']),
+                      token.last_trade + settings.max_data_age_seconds,
+                      token.last_curve + cfg.curve_fresh_seconds)
+    if security_current:
+        valid_until = min(valid_until, token.security['last_updated'] + settings.security_ttl_seconds)
+    if price:
+        valid_until = min(valid_until, price['observed_at'] + settings.max_data_age_seconds)
+    if token.liquidity is not None and current(token.last_liquidity, now, settings.max_data_age_seconds):
+        valid_until = min(valid_until, token.last_liquidity + settings.max_data_age_seconds)
+    return dict(version=EARLY_MARKET_VERSION, observed_at=now,
+        valid_until=valid_until,
+        classification=label, direction=direction, attention_rank=rank,
+        uncertainty='VERY HIGH' if not security_current or not distribution_known or not short or not short['units_valid'] else
+                    'HIGH' if not windows['180']['complete'] or price is None else 'UNCALIBRATED',
+        basis='CONSISTENT-UNIT FLOW' if short and short['units_valid'] and short['independent_buyers'] is not None
+              else 'CANONICAL EVENT COUNTS ONLY' if short else 'LIFECYCLE / INCOMPLETE OBSERVATIONS',
+        speculative_review=eligible, windows=windows, price=price,
+        curve_progress=dynamics.current, curve_retreat_pp=dynamics.retreat_pp,
+        curve_samples=dynamics.samples, curve_coverage_seconds=dynamics.coverage_seconds,
+        security=('CURRENT VERIFIED SNAPSHOT' + ('; DISTRIBUTION UNKNOWN' if not distribution_known else '')
+                  if security_current else 'UNKNOWN / STALE'),
+        interpretation=evidence, missing=missing, warnings=warnings,
+        strengthens=(['Persistent canonical selling across additional fresh windows',
+                      'Verified security and current liquidity/route evidence'] if direction == 'BEARISH' else
+                     ['Independent risk investigation; hard gates remain binding'] if direction == 'RISK' else
+                     ['Fresh independent buyer breadth and sustained consistent-unit buying',
+                      'Verified security and current liquidity/route evidence']),
+        invalidates=(['Sustained buying replacing selling across clean windows',
+                     'Loss of continuity or stale observations'] if direction == 'BEARISH' else
+                    ['Momentum cannot override known hard risks or core rejection',
+                     'Stale observations cannot establish that a historical risk disappeared'] if direction == 'RISK' else
+                    ['Creator selling, security failure or provider disagreement',
+                     'Sell dominance, loss of short-window continuity or stale observations']),
+        manual_only=True, validated_edge=False)
+
+
+# Source-pinned separately from the unchanged opportunity-v1 research protocol.
+EARLY_MARKET_VERSION = 'early-market-v2-' + hashlib.sha256(
+    json.dumps(EARLY_MARKET_POLICY, sort_keys=True).encode()
+    + inspect.getsource(early_market_view).encode()).hexdigest()[:12]
