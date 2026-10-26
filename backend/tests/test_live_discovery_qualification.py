@@ -31,6 +31,18 @@ def inputs():
             "shutdown": {
                 "status": "STOPPED",
                 "checkpoint_complete": True,
+                "v21_prices": {
+                    "acquisition_diagnostics": {
+                        "reserve_rejections": {
+                            "reconciled": True,
+                            "snapshot_available": True,
+                            "calculation_failures": 0,
+                            "aggregation_failures": 0,
+                            "invalid_updates": 0,
+                            "telemetry_integrity_failed": False,
+                        }
+                    }
+                },
                 "accounting": {
                     "events": {
                         "create": {
@@ -245,6 +257,9 @@ async def test_bounded_controller_and_shutdown_without_providers(tmp_path, monke
     class OfflineEngine(real_engine):
         def __init__(self, settings, path):
             super().__init__(settings, path, offline=True)
+            from backend.app.early_prices import PriceResearch
+
+            self.price_research = PriceResearch(self.db, self.session)
 
         async def start(self):
             if blocked_start:
@@ -318,3 +333,33 @@ def test_unchanged_resource_guards(tmp_path, monkeypatch, pressure, expected):
         metrics={},
     )
     assert p.resource_reason(engine, tmp_path, 0) == expected
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("reconciled", False),
+        ("snapshot_available", False),
+        ("calculation_failures", 1),
+        ("aggregation_failures", 1),
+        ("invalid_updates", 1),
+        ("telemetry_integrity_failed", True),
+    ],
+)
+def test_qualification_rejects_reserve_telemetry_failure(field, value):
+    d = inputs()
+    d["audit"]["shutdown"]["v21_prices"]["acquisition_diagnostics"]["reserve_rejections"][field] = value
+    result = q.verdict(**d)
+    assert result["status"] == "FAILED"
+    assert not result["checks"]["reserve_diagnostics_integrity"]
+
+
+def test_qualification_checks_policy_and_fairness_without_claiming_observation():
+    from backend.app.fx_selection import FxSelection
+
+    d = inputs()
+    fx = FxSelection().snapshot()
+    d["audit"]["shutdown"]["v21_prices"]["acquisition_diagnostics"]["fx_selection"] = fx
+    assert q.verdict(**d)["checks"]["fx_selection_integrity"]
+    fx["per_product"]["SOL-USD"]["missed_eligible_mixed_rounds"] = 3
+    assert not q.verdict(**d)["checks"]["fx_selection_integrity"]

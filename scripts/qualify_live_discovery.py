@@ -178,6 +178,12 @@ def verdict(reason, discovery, counts, admitted, audit, source_ok, trace_ok, pen
     shutdown = audit.get("shutdown") or {}
     events = shutdown.get("accounting", {}).get("events", {})
     create = events.get("create", {})
+    prices = shutdown.get("v21_prices") or {}
+    price_diagnostics = prices.get("acquisition_diagnostics") or {}
+    reserve = price_diagnostics.get("reserve_rejections") or {}
+    fx = price_diagnostics.get("fx_selection")
+    from backend.app.fx_selection import VERSION as FX_SELECTION_VERSION
+
     checks = dict(
         scheduled=reason == "SCHEDULED_COMPLETION",
         source_unchanged=source_ok,
@@ -215,6 +221,25 @@ def verdict(reason, discovery, counts, admitted, audit, source_ok, trace_ok, pen
         admitted_token=admitted > 0 and audit.get("durable_live_create_mints", 0) > 0,
         classification_transition=counts.get("transitions", 0) > 0,
         canonical_sources=not counts.get("noncanonical_create_observations", 0),
+        fx_selection_integrity=(
+            fx is None
+            or isinstance(fx, dict)
+            and fx.get("version") == FX_SELECTION_VERSION
+            and set(fx.get("per_product", {})) == {"SOL-USD", "USDCUSD"}
+            and all(
+                type(v.get("missed_eligible_mixed_rounds")) is int
+                and 0 <= v["missed_eligible_mixed_rounds"] <= 2
+                for v in fx["per_product"].values()
+            )
+        ),
+        reserve_diagnostics_integrity=(
+            reserve.get("reconciled") is True
+            and reserve.get("snapshot_available") is True
+            and reserve.get("calculation_failures") == 0
+            and reserve.get("aggregation_failures") == 0
+            and reserve.get("invalid_updates") == 0
+            and reserve.get("telemetry_integrity_failed") is False
+        ),
     )
     missing = [k for k, v in checks.items() if not v]
     # No live creates is inconclusive only when all operational integrity checks passed.
@@ -245,6 +270,9 @@ async def run(expected, output):
         manifest = dict(
             protocol=plan(), source=source, settings=settings.model_dump(), created_at=time.time()
         )
+        from backend.app.fx_selection import VERSION as FX_SELECTION_VERSION
+
+        manifest["fx_selection_policy_version"] = FX_SELECTION_VERSION
         manifest["sha256"] = hashlib.sha256(pilot.canonical(manifest).encode()).hexdigest()
         (output / "manifest.json").write_text(pilot.canonical(manifest))
         engine = RadarEngine(settings, output / "observe.db")
@@ -321,8 +349,12 @@ async def run(expected, output):
                 audit["queue_losses"] = dict(
                     trade=engine.queue.dropped_trades, critical=engine.queue.dropped_critical
                 )
-                if engine.approved_evidence is not None:
-                    reason = "APPROVAL_BOUNDARY_FAILURE"
+                if (
+                    engine.approved_evidence is not None
+                    or engine.paper.state["positions"]
+                    or engine.paper.state["pending"]
+                ):
+                    reason = "APPROVAL_OR_PAPER_BOUNDARY_FAILURE"
                 (output / "shutdown.json").write_text(pilot.canonical(audit.get("shutdown")))
             except BaseException as exc:
                 reason, error = "SHUTDOWN_FAILED", error or exc
@@ -391,9 +423,14 @@ async def run(expected, output):
                 if (output / "observe.db").exists()
                 else None,
                 pending_async_tasks_after_stop=pending_tasks,
+                paper_open_positions=len(engine.paper.state["positions"]),
+                paper_pending_operations=len(engine.paper.state["pending"]),
                 durable_live_create_records=audit.get("durable_live_create_records"),
                 durable_live_create_mints=audit.get("durable_live_create_mints"),
                 queue_losses=audit.get("queue_losses"),
+                price_acquisition_diagnostics=((audit.get("shutdown") or {}).get("v21_prices") or {}).get(
+                    "acquisition_diagnostics"
+                ),
             )
             (output / "report.json").write_text(pilot.canonical(result))
         if error:

@@ -64,6 +64,7 @@ class PriceDiagnostics:
         }
         self.token_omissions = self.review_omissions = self.durable_failures = 0
         self.sequence = 0
+        self.fx_selection = None  # Per-runtime fairness state; old sessions are never backfilled.
         self.status = "RUNNING"
         # Reusing a session must not erase a previous durable diagnostic checkpoint.
         with db.sessions() as sql:
@@ -358,6 +359,7 @@ class PriceDiagnostics:
             tokens=list(self.tokens.values()),
             reviews=[self.historical_review(r) for r in self.reviews.values()],
             fx=fx,
+            fx_selection=self.fx_selection,
             token_omissions=self.token_omissions,
             review_omissions=self.review_omissions,
             durable_failures=self.durable_failures,
@@ -376,6 +378,7 @@ class PriceDiagnostics:
                 "in_progress",
                 "attempt_reconciled",
                 "fx",
+                "fx_selection",
                 "token_omissions",
                 "review_omissions",
                 "durable_failures",

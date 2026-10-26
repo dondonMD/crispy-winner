@@ -4,7 +4,7 @@ import math
 import os
 import time
 import uuid
-from collections import deque, OrderedDict
+from collections import deque, OrderedDict, Counter
 from typing import Any
 from sqlalchemy import text
 
@@ -1038,7 +1038,9 @@ class RadarEngine:
             try:
                 await asyncio.wait_for(self.price_reference.refresh(
                     {r['price_state']['quote_mint'] for r in reports.values() if r.get('price_state')},
-                    max_products=1), timeout=2)
+                    max_products=1,
+                    state_counts=dict(Counter(r['price_state']['quote_mint'] for r in reports.values()
+                                              if r.get('price_state')))), timeout=2)
             except TimeoutError:
                 pass
             refs = self.price_reference.snapshot()

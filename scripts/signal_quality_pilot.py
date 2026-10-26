@@ -716,9 +716,11 @@ async def run(expected, output):
     output.mkdir(parents=True, exist_ok=False)
     from backend.app.opportunity import EARLY_MARKET_VERSION
     from backend.app.early_prices import VERSION, SCHEMA_HASH
+    from backend.app.fx_selection import VERSION as FX_SELECTION_VERSION
 
     manifest = dict(
         interpretation_version=EARLY_MARKET_VERSION,
+        fx_selection_policy_version=FX_SELECTION_VERSION,
         price_instrument_version=VERSION,
         quote_schema_sha256=SCHEMA_HASH,
         protocol=protocol(),

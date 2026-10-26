@@ -19,8 +19,10 @@ class UsdReference(HttpProvider):
         self.diagnostics = diagnostics
         self.cache = {}
         self.last_attempt = {}
+        from backend.app.fx_selection import FxSelection
+        self.selection = FxSelection()
 
-    async def refresh(self, mints=None, max_products=2):
+    async def refresh(self, mints=None, max_products=2, *, state_counts=None):
         products = [(WSOL, "SOL-USD"), (USDC, "USDCUSD")]
         if max_products not in (1, 2) or mints is not None and not set(mints) <= set(QUOTES):
             raise ValueError("Unsupported USD reference request")
@@ -28,7 +30,23 @@ class UsdReference(HttpProvider):
             products = [p for p in products if p[0] in mints]
             products.sort(key=lambda p: self.last_attempt.get(p[0], 0))
         diag = self.diagnostics
-        if diag:
+        if state_counts is not None:
+            if max_products != 1 or mints is None or not isinstance(state_counts, dict) or set(state_counts) != set(mints):
+                raise ValueError("Demand selection requires one-product validated batch")
+            wait = max(0, self.limiter.next_request - time.monotonic())
+            if self.limiter.semaphore.locked():
+                wait = max(wait, 2)  # No immediately available provider slot; do not spend fairness.
+            selected = self.selection.select(state_counts, self.cache, self.last_attempt, time.time(),
+                cooldown_until=self.health['rate_limited_until'], limiter_wait=wait)
+            products = [p for p in products if p[0] == selected]
+            if diag:
+                diag.fx_selection = self.selection.snapshot()
+                for quote, product in ((WSOL, "SOL-USD"), (USDC, "USDCUSD")):
+                    if self.selection.status[quote] == "BUDGET_SKIP":
+                        diag.fx_event(product, 'budget_skipped')
+                    elif self.selection.status[quote] == "INTERVAL_SKIP":
+                        diag.fx_event(product, 'interval_skipped')
+        elif diag:
             for _, product in products[max_products:]:
                 diag.fx_event(product, 'budget_skipped')
         for mint, product in products[:max_products]:
