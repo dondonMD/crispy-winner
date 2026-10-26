@@ -111,6 +111,8 @@ class RadarEngine:
         self.rejected_payloads = 0
         self.rpc = SolanaProvider(settings=settings)
         self.dex = DexScreenerProvider()
+        self.price_reference = None
+        self.price_research = None
         self.pump = PumpPortalProvider(
             settings, self.submit, self.deep_mints, require_key=not offline,
             enabled=os.getenv("PUMPPORTAL_ENABLED", "false").lower() == "true",
@@ -803,6 +805,8 @@ class RadarEngine:
                 checkpoint_failure = None
                 try:
                     if not self.storage_stopped:
+                        if self.price_research is not None:
+                            self.price_research.stop()
                         self.checkpoint(time.time())
                 except Exception as exc:
                     checkpoint_failure = exc
@@ -812,6 +816,11 @@ class RadarEngine:
                     self.db.evidence_run(self.session, dict(status="STORAGE_STOP" if self.storage_stopped else "STOPPED",
                         at=time.time(), accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity,
                         recovery=self.recovery.snapshot(), queue=self.queue.snapshot(),
+                        v21_prices=self.price_research.snapshot() if self.price_research else None,
+                        v21_price_reference={**self.provider_health(getattr(self.price_reference, 'health', {})),
+                            'status_scope': 'HTTP_TRANSPORT_ONLY',
+                            'validity_receipt': self.price_research.diagnostics.key if self.price_research else None}
+                            if self.price_reference else None,
                         persistence_reconciliation=self.db.persistence_snapshot(),
                         checkpoint_complete=not self.storage_stopped and checkpoint_failure is None,
                         checkpoint_failure=type(checkpoint_failure).__name__ if checkpoint_failure else None,
@@ -935,6 +944,30 @@ class RadarEngine:
         self.rpc_errors_seen = errors
 
     async def poll_curves(self, selected, tier, batch_size):
+        diag = self.price_research.diagnostics if self.price_research is not None and tier == 'hot' else None
+        if diag is None:
+            return await self._poll_curves(selected, tier, batch_size)
+        for token in selected:
+            diag.note(token.mint, 'ATTEMPTED')
+        diag.flush()
+        try:
+            return await self._poll_curves(selected, tier, batch_size)
+        except asyncio.CancelledError:
+            for mint in list(diag.inflight):
+                status = diag.inflight.get(mint)
+                diag.note(mint, 'RPC_CANCELLED' if status == 'ATTEMPTED' else 'ACQUISITION_CANCELLED')
+            raise
+        except Exception as exc:
+            for mint in list(diag.inflight):
+                diag.note(mint, getattr(exc, 'diagnostic_category',
+                    'RPC_TIMEOUT' if isinstance(exc, TimeoutError) else 'CALCULATION_REJECTED' if isinstance(exc, ArithmeticError) else 'UNKNOWN_OTHER'))
+            raise
+        finally:
+            diag.flush()
+
+    async def _poll_curves(self, selected, tier, batch_size):
+        diag = self.price_research.diagnostics if self.price_research is not None and tier == 'hot' else None
+        rpc_completed = False
         now = time.time()
         for token in selected:
             token.last_curve_attempt = now
@@ -947,12 +980,18 @@ class RadarEngine:
                     [t.mint for t in selected], batch_size, retry_attempts=1
                 )
             else:
-                reports = await self.rpc.curve_progress_batch([t.mint for t in selected], batch_size)
+                reports = await self.rpc.curve_progress_batch([t.mint for t in selected], batch_size,
+                    price_inputs=not self.offline and self.settings.mode != "DEMO")
+            rpc_completed = True
             self.curve_metrics["curve_accounts_checked"] += len(reports)
             self.curve_metrics["curve_observations_verified"] += sum(
                 r.get("curve_progress") is not None for r in reports.values()
             )
-        except (RuntimeError, ValueError, KeyError, TypeError):
+        except (RuntimeError, ValueError, KeyError, TypeError) as exc:
+            if diag:
+                code = getattr(exc, 'diagnostic_category', 'RPC_INVALID_RESPONSE' if isinstance(exc, (ValueError, KeyError, TypeError)) else 'RPC_UNAVAILABLE')
+                for token in selected:
+                    diag.note(token.mint, code)
             reports = {t.mint: {"curve_progress": None, "data_quality": "UNKNOWN"} for t in selected}
             # Includes malformed responses even if the HTTP connection succeeded.
             self.background_backoff_until = max(
@@ -960,7 +999,15 @@ class RadarEngine:
             )
         finally:
             self.curve_metrics["curve_http_requests"] += self.rpc.health["requests"] - requests_before
+        if diag and rpc_completed:
+            for token in selected:
+                if token.mint not in reports:
+                    diag.note(token.mint, 'NO_VERIFIED_CURVE')
         for mint, report in reports.items():
+            if diag and rpc_completed:
+                diag.note(mint, 'RPC_COMPLETED')
+                diag.note(mint, 'STATE_VALIDATED' if report.get('price_state') else
+                          report.get('price_status', 'NO_VERIFIED_CURVE'))
             self.submit(
                 MarketEvent(
                     mint=mint,
@@ -968,9 +1015,48 @@ class RadarEngine:
                     source="Solana RPC",
                     kind="curve",
                     event_id=f"curve:{mint}:{now}",
-                    evidence={**report, "poll_tier": tier},
+                    evidence={**{k: v for k, v in report.items()
+                        if k not in ("price_state", "price_status")}, "poll_tier": tier},
                 )
             )
+        if (tier == 'hot' and not self.offline and self.settings.mode != 'DEMO'
+                and any(r.get('price_state') for r in reports.values())):
+            from backend.app.early_edge_runtime import UsdReference
+            from backend.app.early_prices import usd_mark
+            if self.price_reference is None:
+                self.price_reference = UsdReference(client=self.dex.client, diagnostics=diag)
+            # One needed public FX product/poll; original reference callers keep their defaults.
+            try:
+                await asyncio.wait_for(self.price_reference.refresh(
+                    {r['price_state']['quote_mint'] for r in reports.values() if r.get('price_state')},
+                    max_products=1), timeout=2)
+            except TimeoutError:
+                pass
+            refs = self.price_reference.snapshot()
+            assert self.price_research is not None
+            for mint, report in reports.items():
+                state = report.pop('price_state', None)
+                token = self.tokens.get(mint)
+                if state and token and token.graduation is None:
+                    try:
+                        mark = usd_mark(state, refs, time.time(), token.disagreement)
+                        if diag:
+                            diag.note(mint, 'CONSTRUCTED')
+                        self.price_research.accept(mark, time.time(), persist=True)
+                    except StorageBudgetError:
+                        self.storage_stopped = True
+                        self.running = False
+                        self.invalidate_trade_coverage()
+                        self.db.evidence_run(self.session, dict(status='STORAGE_STOP', at=time.time(),
+                            reason='early_price_receipt', v21_prices=self.price_research.snapshot(),
+                            accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity))
+                        return
+                    except (ValueError, TypeError, KeyError) as exc:
+                        self.price_research.rejected += 1
+                        if diag:
+                            diag.note(mint, getattr(exc, 'reason', 'CALCULATION_REJECTED'))
+                elif state and diag:
+                    diag.note(mint, 'TOKEN_INELIGIBLE')
         self.background_health_backoff(time.time())
 
     async def enrich_once(self):
@@ -985,6 +1071,24 @@ class RadarEngine:
         ]
         due_curves.sort(key=lambda t: (t.last_curve_attempt, -t.priority()[0]))
         selected = due_curves[: self.settings.curve_batch_size]
+        if self.price_research is not None:
+            diag = self.price_research.diagnostics
+            due_mints = {t.mint for t in due_curves}
+            selected_mints = {t.mint for t in selected}
+            for mint, token in self.tokens.items():
+                if token.graduation is not None:
+                    diag.note(mint, 'NOT_PREGRAD', now)
+                    continue
+                if mint not in deep:
+                    diag.note(mint, 'NOT_SELECTED', now)
+                elif mint not in due_mints:
+                    diag.note(mint, 'NOT_DUE', now)
+                elif mint not in selected_mints:
+                    diag.note(mint, 'NOT_SELECTED', now)
+                elif not self.rpc.eligible('hot'):
+                    diag.note(mint, 'RPC_INELIGIBLE', now)
+                elif now-self.last_hot_batch < self.rpc.interval(self.settings.curve_poll_seconds, 'hot'):
+                    diag.note(mint, 'NOT_DUE', now)
         # Cooldowns do not block the loop waiting on low-priority work.
         if (
             selected
@@ -1164,7 +1268,7 @@ class RadarEngine:
         self.accounting.last_tick = now
 
     async def run_loop(self):
-        while True:
+        while not self.storage_stopped:
             try:
                 now = time.time()
                 while self.queue.affected:
@@ -1194,6 +1298,7 @@ class RadarEngine:
                     self.db.evidence_run(self.session, dict(status="RUNNING", at=now,
                         accounting=self.accounting.snapshot(self.queue), continuity=self.trade_continuity,
                         persistence_reconciliation=self.db.persistence_snapshot(),
+                        v21_prices=self.price_research.snapshot() if self.price_research else None,
                         token_evidence=self.token_evidence_receipt(time.time())))
                 if self.metrics["resource_pressure"]:
                     self.alert("SYSTEM", "", "RESOURCE PRESSURE — reducing monitoring", now)

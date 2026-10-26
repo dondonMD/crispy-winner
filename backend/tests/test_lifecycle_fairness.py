@@ -182,7 +182,7 @@ async def test_rate_limit_suppresses_background_first_and_recovers(tmp_path, mon
     e.dex.markets = AsyncMock(return_value=[])
 
     async def curves(mints, size, **kwargs):
-        if kwargs:
+        if kwargs.get("retry_attempts") == 1:
             e.rpc.health.update(
                 errors=1, rate_limits=1, rate_limited_until=clock[0] + 10, attempted=True, connected=False
             )
@@ -239,7 +239,7 @@ async def test_expiry_during_curve_request_does_not_stop_enrichment(tmp_path):
     mint = str(Pubkey.new_unique())
     launch(e, mint, now)
 
-    async def curves(mints, size):
+    async def curves(mints, size, **kwargs):
         del e.tokens[mints[0]]  # Monitor expiry while an HTTP response was in flight.
         return {m: {"curve_progress": 40} for m in mints}
 

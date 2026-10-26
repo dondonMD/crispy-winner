@@ -36,6 +36,12 @@ class AsyncRateLimiter:
             self.next_request = time.monotonic() + self.interval
 
 
+class ProviderRequestFailure(RuntimeError):
+    def __init__(self, message, diagnostic_category):
+        super().__init__(message)
+        self.diagnostic_category = diagnostic_category
+
+
 class HttpProvider:
     def __init__(self, name, rate=2, client=None):
         self.name = name
@@ -59,6 +65,7 @@ class HttpProvider:
         self.health["connected"] = False
 
     async def request(self, method, url, retry_attempts=3, accounting=None, **kwargs):
+        failure_category = 'RPC_UNAVAILABLE'
         retry_attempts = min(3, max(1, retry_attempts))
         for attempt in range(retry_attempts):
             queued = time.monotonic()
@@ -91,6 +98,7 @@ class HttpProvider:
                 try:
                     async with self.client.stream(method, url, **kwargs) as response:
                         if response.status_code == 429:
+                            failure_category = 'RPC_RATE_LIMITED'
                             try:
                                 delay = max(1, float(response.headers.get("Retry-After", "2")))
                                 if not math.isfinite(delay):
@@ -115,7 +123,7 @@ class HttpProvider:
                             self.health["connected"] = False
                             self.request_failed()
                             if isinstance(self, SolanaProvider):
-                                raise RuntimeError("Provider rate limited; scheduler will retry")
+                                raise ProviderRequestFailure("Provider rate limited; scheduler will retry", "RPC_RATE_LIMITED")
                         else:
                             response.raise_for_status()
                             chunks = bytearray()
@@ -131,6 +139,7 @@ class HttpProvider:
                             )
                             return data
                 except (httpx.HTTPError, ValueError) as exc:
+                    failure_category = 'RPC_TIMEOUT' if isinstance(exc, httpx.TimeoutException) else 'RPC_INVALID_RESPONSE' if isinstance(exc, ValueError) else 'RPC_UNAVAILABLE'
                     if accounting is not None:
                         accounting["errors"] += 1
                     self.health["errors"] += 1
@@ -145,7 +154,7 @@ class HttpProvider:
             self.health["connected"] = False
             if attempt < retry_attempts - 1:
                 await asyncio.sleep(delay)
-        raise RuntimeError(f"{self.name} unavailable after bounded retries")
+        raise ProviderRequestFailure(f"{self.name} unavailable after bounded retries", failure_category)
 
     async def close(self):
         await self.client.aclose()
@@ -234,8 +243,8 @@ class SolanaProvider(HttpProvider):
             accounting["successful_requests"] += 1
         return data["result"]
 
-    async def curve_progress_batch(self, mints, batch_size=25, retry_attempts=3):
-        """One bounded batch; no mint, holder or creator scans. PDAs are derived locally."""
+    async def curve_progress_batch(self, mints, batch_size=25, retry_attempts=3, price_inputs=False):
+        """One bounded batch. Optional same-slot mint metadata for indicative marks."""
         from backend.app.onchain import parse_curve, parse_global, curve_progress
 
         mints = list(dict.fromkeys(mints))[: min(50, max(1, batch_size))]
@@ -246,14 +255,23 @@ class SolanaProvider(HttpProvider):
             str(Pubkey.find_program_address([b"bonding-curve", bytes(Pubkey.from_string(m))], program)[0])
             for m in mints
         ]
+        if price_inputs:
+            # <=25 hot curves +25 base mints +2 quote mints +global =53 accounts.
+            if len(mints) > 25:
+                raise ValueError("Price input batch exceeds existing hot capacity")
+            addresses.extend(mints)
+            addresses.extend(["So11111111111111111111111111111111111111112",
+                              "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"])
         refresh = self.global_cache is None or time.time() - self.global_cached_at >= 300
         if refresh:
             addresses.append(str(Pubkey.find_program_address([b"global"], program)[0]))
+        requested_at = time.time()
         result = await self.rpc(
             "getMultipleAccounts",
             [addresses, {"encoding": "base64", "commitment": "confirmed"}],
             retry_attempts=retry_attempts,
         )
+        acquired_at = time.time()
         values = result.get("value")
         if not isinstance(values, list) or len(values) != len(addresses):
             self.health["errors"] += 1
@@ -282,6 +300,17 @@ class SolanaProvider(HttpProvider):
                 )
             except (ValueError, TypeError, KeyError):
                 pass
+            if price_inputs:
+                from backend.app.early_prices import reserve_state
+                from backend.app.early_edge_quotes import WSOL, USDC
+                try:
+                    index = mints.index(mint)
+                    report['price_state'] = reserve_state(mint, addresses[index], account,
+                        values[len(mints)+index],
+                        {WSOL: values[2*len(mints)], USDC: values[2*len(mints)+1]},
+                        result.get('context', {}).get('slot'), requested_at, acquired_at)
+                except (ValueError, TypeError, KeyError, IndexError) as exc:
+                    report['price_status'] = getattr(exc, 'reason', 'NO_VERIFIED_CURVE')
             reports[mint] = report
         return reports
 

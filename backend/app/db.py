@@ -169,6 +169,17 @@ class Database:
         if len(encoded.encode()) > 65536:
             raise StorageBudgetError("Operational receipt exceeds bounded size")
         with self.sessions.begin() as db:
+            if session.startswith("px:"):
+                # Reserved price-diagnostic namespace only. Financial/research/history rows are untouched.
+                retired = list(db.scalars(select(EvidenceRun.session).where(
+                    EvidenceRun.session.like("px:%"), EvidenceRun.session != session
+                ).order_by(text("json_extract(payload, '$.at') DESC")).offset(31).limit(128)))
+                payload['diagnostic_retention'] = dict(keep_latest=32, pruned_in_this_write=len(retired))
+                encoded = json.dumps(payload, allow_nan=False)
+                if len(encoded.encode()) > 65536:
+                    raise StorageBudgetError("Operational receipt exceeds bounded size")
+                if retired:
+                    db.execute(delete(EvidenceRun).where(EvidenceRun.session.in_(retired)))
             db.merge(EvidenceRun(session=session, payload=encoded))
 
     def _raw_pressure(self, ts):
@@ -434,6 +445,9 @@ class Database:
     def retention(self, settings, now=None):
         now = time.time() if now is None else now
         groups = {
+            "v21_price_signal": settings.outcome_retention_days * 86400,
+            "v21_price_outcome": settings.outcome_retention_days * 86400,
+            "v21_price_mark": settings.raw_retention_hours * 3600,
             "opportunity_signal": settings.outcome_retention_days * 86400,
             "opportunity_outcome": settings.outcome_retention_days * 86400,
             "manual_position_mark": settings.snapshot_retention_days * 86400,

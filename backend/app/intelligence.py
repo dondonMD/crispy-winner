@@ -19,6 +19,9 @@ class Intelligence:
         self.exit_results: dict = {}
         self.exit_actions: dict = {}
         self.last_refresh = 0.0
+        if not engine.offline and engine.settings.mode != 'DEMO':
+            from backend.app.early_prices import PriceResearch
+            engine.price_research = PriceResearch(engine.db, engine.session)
 
     def project(self, token, now, manual=True):
         market = provider_market(token, self.engine.settings, now)
@@ -73,6 +76,15 @@ class Intelligence:
         self.research.actions = {
             mint: action for mint, action in self.research.actions.items() if mint in active
         }
+        prices = getattr(self.engine, 'price_research', None)
+        if prices is not None and not self.engine.metrics.get('storage_full'):
+            prices.tick(self.engine.tokens, self.results, now)
+            for mint, projection in self.results.items():
+                mark = prices.marks.get(mint)
+                token = self.engine.tokens.get(mint)
+                projection['verified_price_observation'] = (mark if mark and token and
+                    token.graduation is None and not token.disagreement and
+                    mark['observed_at'] <= now <= mark['valid_until'] else None)
         self.refresh_positions(now)
 
     def refresh_positions(self, now):

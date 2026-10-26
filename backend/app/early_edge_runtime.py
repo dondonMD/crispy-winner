@@ -14,17 +14,36 @@ from backend.app.providers import HttpProvider
 class UsdReference(HttpProvider):
     """Two fixed public tickers, <=one request per product/10s; no future interpolation."""
 
-    def __init__(self, client=None):
+    def __init__(self, client=None, diagnostics=None):
         super().__init__("Early research USD reference", rate=0.2, client=client)
+        self.diagnostics = diagnostics
         self.cache = {}
         self.last_attempt = {}
 
-    async def refresh(self):
-        for mint, product in ((WSOL, "SOL-USD"), (USDC, "USDCUSD")):
+    async def refresh(self, mints=None, max_products=2):
+        products = [(WSOL, "SOL-USD"), (USDC, "USDCUSD")]
+        if max_products not in (1, 2) or mints is not None and not set(mints) <= set(QUOTES):
+            raise ValueError("Unsupported USD reference request")
+        if mints is not None:
+            products = [p for p in products if p[0] in mints]
+            products.sort(key=lambda p: self.last_attempt.get(p[0], 0))
+        diag = self.diagnostics
+        if diag:
+            for _, product in products[max_products:]:
+                diag.fx_event(product, 'budget_skipped')
+        for mint, product in products[:max_products]:
             now = time.time()
             if now - self.last_attempt.get(mint, 0) < 10:
+                if diag:
+                    diag.fx_event(product, 'interval_skipped')
                 continue
             self.last_attempt[mint] = now
+            before = self.health['requests']
+            completed = False
+            ref = None
+            if diag:
+                diag.fx_event(product, 'attempted')
+                diag.flush()
             try:
                 if mint == WSOL:
                     data = await self.request(
@@ -32,6 +51,9 @@ class UsdReference(HttpProvider):
                         f"https://api.exchange.coinbase.com/products/{product}/ticker",
                         retry_attempts=1,
                     )
+                    completed = True
+                    if diag:
+                        diag.fx_event(product, 'http_completed')
                     price = float(data["price"])
                     published = datetime.fromisoformat(data["time"].replace("Z", "+00:00")).timestamp()
                     source = "Coinbase Exchange public ticker"
@@ -42,6 +64,9 @@ class UsdReference(HttpProvider):
                         params={"pair": "USDCUSD", "count": 1},
                         retry_attempts=1,
                     )
+                    completed = True
+                    if diag:
+                        diag.fx_event(product, 'http_completed')
                     if (
                         data.get("error") != []
                         or set(data["result"]) != {"USDCUSD", "last"}
@@ -56,8 +81,22 @@ class UsdReference(HttpProvider):
                 )
                 fx_value({mint: ref}, mint, ref["acquired_at"])
                 self.cache[mint] = ref
-            except (ValueError, KeyError, IndexError, TypeError, RuntimeError, httpx.HTTPError):
+                if diag:
+                    diag.fx_event(product, 'usable', ref)
+            except asyncio.CancelledError:
+                if diag:
+                    diag.fx_event(product, 'cancelled')
+                raise
+            except (ValueError, KeyError, IndexError, TypeError, RuntimeError, httpx.HTTPError) as exc:
+                if diag:
+                    from backend.app.price_diagnostics import fx_problem
+                    stale = ref is not None and fx_problem({mint: ref}, mint, time.time()) == 'USD_STALE'
+                    diag.fx_event(product, 'stale_rejected' if stale else 'validation_failed' if completed or getattr(exc, 'diagnostic_category', '') == 'RPC_INVALID_RESPONSE' else 'request_failed')
                 pass  # Expiry is explicit; no stale substitution or fabricated USD.
+            finally:
+                if diag:
+                    diag.fx_event(product, 'http_started', amount=self.health['requests']-before)
+                    diag.flush()
         return self.snapshot()
 
     def snapshot(self):
