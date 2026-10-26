@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
@@ -23,6 +23,16 @@ from backend.app.manual import (
     manual_economics,
 )
 import time
+
+
+def dashboard_json(engine):
+    """Encode one current, owner-thread snapshot; never cache market evidence.
+
+    The dashboard is already JSON-native (also the SSE contract). Returning its
+    encoded response avoids FastAPI recursively converting the entire tree again.
+    Keep strict nonfinite rejection and all original snapshot predicates.
+    """
+    return json.dumps(engine.snapshot(), allow_nan=False, separators=(",", ":"))
 
 
 def create_app(settings=None, db_path=None):
@@ -111,7 +121,7 @@ def create_app(settings=None, db_path=None):
 
     @app.get("/api/dashboard")
     async def dashboard():
-        return app.state.engine.snapshot()
+        return Response(content=dashboard_json(app.state.engine), media_type="application/json")
 
     @app.get("/api/tokens/{mint}")
     async def detail(mint: str):
@@ -217,7 +227,7 @@ def create_app(settings=None, db_path=None):
     async def stream(request: Request):
         async def snapshots():
             while not await request.is_disconnected():
-                yield "data: " + json.dumps(app.state.engine.snapshot(), allow_nan=False) + "\n\n"
+                yield "data: " + dashboard_json(app.state.engine) + "\n\n"
                 await asyncio.sleep(2)
 
         return StreamingResponse(
