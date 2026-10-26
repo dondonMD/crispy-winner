@@ -60,11 +60,11 @@ async def main(seconds=65, max_deep=25):
             successes += sum(r.get("curve_progress") is not None for r in reports.values())
             return reports
 
-        def counted_process(event, now=None):
+        def counted_process(event, now=None, *, queued=False):
             nonlocal launch_count, migrations
             recovery_stale_before = engine.recovery.health["recovered_migration_recovery_freshness_rejected"]
             previous_graduation = engine.tokens[event.mint].graduation if event.mint in engine.tokens else None
-            accepted = original_process(event, now)
+            accepted = original_process(event, now, queued=queued)
             if event.kind == "migration" and not accepted:
                 if event.source == "Recovered Pump instruction":
                     reason = "stale" if engine.recovery.health["recovered_migration_recovery_freshness_rejected"] > recovery_stale_before else "other"
