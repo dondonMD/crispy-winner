@@ -113,3 +113,44 @@ Validation: **162 passed in 6.46s** across the new harness tests and existing V2
 Preservation: current task's 14 hashes, the original 14-file preservation manifest, and the prior eight-file receipt manifest match. No original database, frozen observation folder or unrelated dirty file changed. Deterministic cases cover append-only transitions, controls with missing data, class deduplication, immutable baselines, negative/flat outcomes, exact capture/tail boundaries, shutdown/interruption censorship, departure, ledger capacity/partial writes, source/ref refusal, approved successor verification, drift and observational equivalence against a real offline DEMO engine. Synthetic prices and matches are never evidence of real returns.
 
 Only new files are intended: `scripts/signal_quality_pilot.py`, `backend/tests/test_signal_quality_pilot.py`, and this report. Production code and previous harnesses are unchanged. No provider or 20-minute run was started. No staging, commit or push. PRE_COHORT_READY remains NO.
+
+## Queued observer contract repair — 2026-10-26
+
+Published source inspected: `0cf380396c55d2cd5a7a342d58ab9345df9f07b3` on the approved remediation branch. This is a harness correction only; no production engine, decoder, pricing, policy, scheduler, or database schema was changed. No providers/server were started. The interrupted `signal-quality-pilot-20261026T092018Z` folder remains frozen; nothing was backfilled or resumed.
+
+### Confirmed defect and correction
+
+`RadarEngine.process(event, now=None, *, queued=False)` finishes queue accounting in its `finally` block when `queued=True`. The real `drain_events()` passes that keyword. The pilot wrapper previously accepted only `(event, now=None)`, so Python raised TypeError **before entering the original bound method**. `drain_events()` caught the exception and invalidated coverage, but original processing/persistence/accounting never ran. The former direct-call equivalence test did not cover this contract.
+
+The wrapper now accepts `*, queued=False` and calls `process(event, now, queued=queued)`. The original call stays outside the observer's exception handler: original exceptions propagate unchanged, original return values remain unchanged, and discovery is recorded only after return. Observer exceptions request `DISCOVERY_OBSERVER_FAILURE` without altering the engine decision. Detachment restores both original bound methods. There is no extra processing, replay, or acknowledgement.
+
+### Frozen interrupted-attempt findings
+
+Read-only JSON/SQLite inspection confirms 97 ledger records (START, 95 HEALTH, STOP), no discovery/transitions, CANCELLED after 955.209s total / 954.502s observation, closed ledger and completed shutdown. `complete=false` in the top-level report correctly differs from ledger closure alone. The database has only paper-account/session/session-context/strategy records, no market-event records.
+
+The shutdown accounting records **240 accepted creates, 240 still in-processing, zero pending, zero terminal and zero persisted creates**. Accounting's structural reconciliation is true because outstanding work remains explicit; it does not establish completed processing. Pre-shutdown continuity shows 241 live global resets: 240 consistent with caught create-processing failures plus one recorded transport reset. Final receipt adds one intentional shutdown reset (242 total). This supports the demonstrated harness defect; it does not prove Wi-Fi caused any error.
+
+The last retained HEALTH reports **298 discovery errors, one reconnect**. These are a separate counter from engine processing failures. Source inspection shows discovery.errors increases through `record_decode_failure` and the transport exception/reconnect handler. With zero initial counters and the recorded one reconnect, **297 aggregate decode failures are implied by these counter definitions**, not 298 transport failures or 298 queue-wrapper exceptions. This is derived attribution, not a retained detailed decode histogram. The old HEALTH fields and the two durable evidence receipts contain no discovery failure category histogram or transport diagnostic history. Exact notification/layout/framing categories, timestamps, exception cause, and relationship to network interruption are therefore **UNKNOWN**. No stale-event rejection can be inferred from that discovery total. The 240 failed queued creates are independently recorded as outstanding, not stale or recovered.
+
+### Bounded HEALTH improvement
+
+Each new HEALTH record copies existing numeric counters only: messages, launch_events, ignored_events, decoding_errors, last_success/last_event; fixed allowlists of decode reason/event counts, framing details, transport failure counts and global reset reasons. Unexpected keys and nonnumeric/nonfinite values are omitted or null. Dictionaries are copied at capture time. Missing counters remain null rather than invented zero. No payloads, signatures, wallet information, arbitrary exception strings or URLs are copied. Existing error/reconnect/connected fields remain.
+
+This adds constant-size work once per existing HEALTH interval, not per message. The discovery object with unavailable values serializes to 1,288 bytes; a real offline engine HEALTH record passes the existing 16 KiB limit. Integer digit growth still obeys the unchanged fail-closed ledger size cap. The 64 MiB / 24,000-record ledger limits and buffering/retention rules are unchanged. No live CPU-throughput result is claimed.
+
+### Regression and validation
+
+- The corrected real-queue regression was run with the original wrapper restored temporarily: **1 failed**, with `Event processing failed; kind=create`, no admitted token. Restoring the fix made it pass. Explicit keyword-forwarding tests also fail against the original signature. An initial test-fixture error (using dataclass replacement on a Pydantic event) was corrected before this real-queue demonstration; it was not evidence of the production defect.
+- Real isolated offline engines use `submit()` then actual `await drain_events()` for canonical-shaped DEMO create fixtures, duplicate and stale rejection. One create persists, all dispositions reconcile, queue/in-processing clear; results match the unobserved engine. Intelligence refresh after admission produces identical outputs and recorded transitions.
+- Direct/queued forwarding, original exceptions, observer failures, real queued failure accounting, original return values, and exact detachment are covered. Real engine shutdown is awaited normally; no executor/worker cleanup bypass.
+- Dedicated pilot, event-accounting/remediation, shutdown and V2.1 suites: **80 passed in 18.90s**, exit 0 (33 pilot cases). No full-suite or performance campaign was needed.
+- Ruff passed; mypy passed (48 source files); basic secret scan passed (278 source/document files); whitespace check passed.
+- Existing preservation manifests: 14/14 preparation hashes, 14/14 original pricing hashes and 8/8 diagnostic hashes match, including all six unrelated files. No historical database writes, checkpoint, vacuum, migration, receipt edits, staging, commit or push.
+
+Intended changes only: `scripts/signal_quality_pilot.py`, `backend/tests/test_signal_quality_pilot.py`, and this report.
+
+### Remaining action (not executed)
+
+After review/publication of this fix, separately authorize one short isolated read-only discovery smoke using the corrected published SHA. It should prove submitted creates reach terminal processing/persistence, zero stranded in-processing work, DISCOVERY and post-admission classification records, bounded new failure histograms, and normal shutdown. Require this before another 20-minute pilot; do not resume or repair the interrupted attempt. Such a smoke would not establish 180-second CURRENT coverage, predictive quality, executable fills or net profitability. Any still-unexplained discovery failures need their newly captured categories reviewed.
+
+Phase 4 remains unauthorized. **PRE_COHORT_READY=NO.**

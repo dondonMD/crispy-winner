@@ -230,7 +230,7 @@ def test_observer_preserves_original_return_and_state_on_own_failure(tmp_path):
     r = p.Recorder(ledger, START)
     e = engine()
     original = e.tokens[MINT].__dict__.copy()
-    e.process = lambda event, now=None: "ORIGINAL_RETURN"
+    e.process = lambda event, now=None, *, queued=False: "ORIGINAL_RETURN"
     e.intelligence.last_refresh = 0
 
     def refresh(now):
@@ -415,3 +415,141 @@ def test_failed_ledger_write_is_never_retried_or_acknowledged(tmp_path):
         ledger.flush()
     ledger.close()
     assert ledger.path.stat().st_size == 0 and not p.verify_ledger(ledger.path)["complete"]
+
+
+async def test_real_queue_observer_contract_and_accounting(tmp_path):
+    import time
+    from backend.app.engine import RadarEngine
+    from backend.app.config import Settings
+    from backend.app.demo import demo_events
+
+    now = time.time()
+    a = RadarEngine(Settings(mode="DEMO"), tmp_path / "a.db", offline=True)
+    b = RadarEngine(Settings(mode="DEMO"), tmp_path / "b.db", offline=True)
+    ledger = p.Ledger(tmp_path / "queue.jsonl")
+    recorder = p.Recorder(ledger, now)
+    original = b.process
+    refresh = b.intelligence.refresh
+    detach = p.attach(b, recorder, clock=lambda: now)
+    create = demo_events(now, 0)[0]
+    try:
+        # Real queue path, including duplicate and stale rejection.
+        events = [
+            create,
+            create,
+            create.model_copy(update=dict(mint="STALE", event_id="stale", ts=now - 100)),
+        ]
+        for e in (a, b):
+            for event in events:
+                assert e.submit(event)
+            await e.drain_events()
+        assert create.mint in b.tokens
+        assert set(a.tokens) == set(b.tokens)
+        assert not b.queue.heap and not any(b.queue.in_processing.values())
+        assert a.accounting.terminal == b.accounting.terminal
+        assert a.accounting.persisted == b.accounting.persisted
+        assert b.accounting.persisted["create"] == 1
+        assert all(row["reconciled"] for row in b.accounting.snapshot(b.queue)["events"].values())
+        records = [x["payload"] for x in rows(ledger) if x["kind"] == "DISCOVERY"]
+        assert len(records) == 3 and sum(x["admitted"] for x in records) == 1
+        assert {x["disposition"] for x in records} == {"processed", "duplicate_memory", "stale"}
+        for e in (a, b):
+            e.intelligence.refresh(now, force=True)
+        assert a.intelligence.results == b.intelligence.results
+        assert recorder.counts["transitions"] > 0
+    finally:
+        detach()
+        assert b.process == original and b.intelligence.refresh == refresh
+        ledger.close()
+        await a.stop()
+        await b.stop()
+
+
+@pytest.mark.parametrize("queued", [False, True])
+def test_wrapper_forwards_contract_and_original_exceptions(tmp_path, queued):
+    e = engine()
+    e.intelligence.last_refresh = 0
+    e.intelligence.refresh = lambda: None
+    calls = []
+
+    def original(event, now=None, *, queued=False):
+        calls.append((event, now, queued))
+        if event == "raise":
+            raise RuntimeError("synthetic")
+        return "unchanged"
+
+    e.process = original
+    r = NS(stop_reason=None, discovery=lambda *args: (_ for _ in ()).throw(ValueError()))
+    detach = p.attach(e, r)
+    assert e.process("ok", START, queued=queued) == "unchanged"
+    assert calls[-1] == ("ok", START, queued)
+    assert r.stop_reason == "DISCOVERY_OBSERVER_FAILURE"
+    r.stop_reason = None
+    with pytest.raises(RuntimeError, match="synthetic"):
+        e.process("raise", START, queued=queued)
+    assert r.stop_reason is None
+    detach()
+    assert e.process is original
+
+
+async def test_discovery_health_is_fixed_cardinality_numeric_and_record_bounded(tmp_path):
+    from backend.app.engine import RadarEngine
+    from backend.app.config import Settings
+
+    # No engine start and no network; snapshot the real fixed diagnostic shape.
+    e = RadarEngine(Settings(mode="DEMO"), tmp_path / "health.db", offline=True)
+    health = e.onchain.health
+    health["messages"] = 123
+    health["decode_failures_by_reason"]["unsupported_layout"] = 7
+    health["decode_failures_by_reason"]["private_url"] = "https://secret.invalid/key"
+    health["last_event"] = "SECRET"
+    result = p.discovery_snapshot(health)
+    assert result["messages"] == 123
+    assert result["decode_failures_by_reason"]["unsupported_layout"] == 7
+    assert result["last_event"] is None
+    assert "SECRET" not in json.dumps(result) and "private_url" not in json.dumps(result)
+    health["decode_failures_by_reason"]["unsupported_layout"] = 8
+    assert result["decode_failures_by_reason"]["unsupported_layout"] == 7
+    ledger = p.Ledger(tmp_path / "health.jsonl")
+    ledger.emit("HEALTH", p.operational_snapshot(e, START, 0))
+    ledger.close()
+    assert len(ledger.path.read_bytes()) < 16384
+    await e.stop()
+
+
+@pytest.mark.parametrize("observer_failure", [False, True])
+async def test_real_queue_failure_semantics_unchanged(tmp_path, observer_failure):
+    import time
+    from backend.app.engine import RadarEngine
+    from backend.app.config import Settings
+    from backend.app.demo import demo_events
+
+    now = time.time()
+    e = RadarEngine(Settings(mode="DEMO"), tmp_path / "failure.db", offline=True)
+    ledger = p.Ledger(tmp_path / "failure.jsonl")
+    recorder = p.Recorder(ledger, now)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("synthetic failure")
+
+    if observer_failure:
+        recorder.discovery = fail
+    else:
+        e._process = fail
+    detach = p.attach(e, recorder, clock=lambda: now)
+    event = demo_events(now, 0)[0]
+    try:
+        assert e.submit(event)
+        await e.drain_events()
+        assert not e.queue.heap and not any(e.queue.in_processing.values())
+        row = e.accounting.snapshot(e.queue)["events"]["create"]
+        assert row["reconciled"]
+        assert row["terminal"] == {"processed" if observer_failure else "exception": 1}
+        assert row["persisted"] == int(observer_failure)
+        assert (event.mint in e.tokens) == observer_failure
+        assert recorder.stop_reason == ("DISCOVERY_OBSERVER_FAILURE" if observer_failure else None)
+        assert not rows(ledger)  # Failed original calls never reach the observer.
+    finally:
+        detach()
+        ledger.close()
+        await e.stop()

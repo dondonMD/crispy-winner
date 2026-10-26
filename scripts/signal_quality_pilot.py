@@ -519,8 +519,8 @@ def attach(engine, recorder, clock=time.time):
     process = engine.process
     refresh = engine.intelligence.refresh
 
-    def observed(event, now=None):
-        result = process(event, now)
+    def observed(event, now=None, *, queued=False):
+        result = process(event, now, queued=queued)
         try:
             recorder.discovery(event, result, getattr(engine, "_process_reason", "UNAVAILABLE"), clock())
         except Exception:
@@ -547,6 +547,56 @@ def attach(engine, recorder, clock=time.time):
     return detach
 
 
+def discovery_snapshot(health):
+    """Fixed-cardinality numeric telemetry only; never copy arbitrary health strings/maps."""
+    from backend.app.discovery import FAILURE_REASONS, FAILURE_EVENTS, TRANSPORT_FAILURES
+
+    def number(value):
+        import math
+
+        return value if isinstance(value, (int, float)) and math.isfinite(value) else None
+
+    result = {
+        key: number(health.get(key))
+        for key in (
+            "errors",
+            "reconnects",
+            "connected",
+            "messages",
+            "launch_events",
+            "ignored_events",
+            "decoding_errors",
+            "last_success",
+            "last_event",
+        )
+    }
+    for key, allowed in (
+        ("decode_failures_by_reason", FAILURE_REASONS),
+        ("decode_failures_by_event", FAILURE_EVENTS),
+        (
+            "framing_failure_details",
+            ("depth_mismatch", "unbalanced_finish", "unfinished_invocations", "other"),
+        ),
+        ("transport_failure_counts", TRANSPORT_FAILURES),
+        (
+            "global_reset_reasons",
+            (
+                "transport",
+                "shutdown",
+                "unknown_trade_identity",
+                "invocation_framing",
+                "outer_notification",
+                "event_decode",
+                "log_truncation",
+                "truncation_recovery",
+            ),
+        ),
+    ):
+        values = health.get(key, {})
+        result[key] = {name: number(values.get(name)) for name in allowed}
+    return result
+
+
 def operational_snapshot(engine, now, elapsed):
     queue = engine.queue
     recovery = engine.recovery.snapshot()
@@ -561,7 +611,7 @@ def operational_snapshot(engine, now, elapsed):
         resources=dict(engine.metrics),
         continuity=dict(engine.trade_continuity),
         rpc={k: engine.rpc.health.get(k) for k in ("requests", "errors", "rate_limits", "connected")},
-        discovery={k: engine.onchain.health.get(k) for k in ("errors", "reconnects", "connected")},
+        discovery=discovery_snapshot(engine.onchain.health),
         recovery={
             k: recovery.get(k)
             for k in (
