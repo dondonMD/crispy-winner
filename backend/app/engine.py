@@ -1008,6 +1008,15 @@ class RadarEngine:
                 diag.note(mint, 'RPC_COMPLETED')
                 diag.note(mint, 'STATE_VALIDATED' if report.get('price_state') else
                           report.get('price_status', 'NO_VERIFIED_CURVE'))
+                try:
+                    if report.get('_reserve_rejection_failed') is True:
+                        diag.reserve_rejection_calculation_failures = min(
+                            2147483647, diag.reserve_rejection_calculation_failures + 1)
+                    diag.reserve_rejections.record(report.get('price_status'), report.get('_reserve_rejection'))
+                except Exception:
+                    # Isolate only the new telemetry, never pricing/provider/event processing.
+                    diag.reserve_rejection_aggregation_failures = min(
+                        2147483647, diag.reserve_rejection_aggregation_failures + 1)
             self.submit(
                 MarketEvent(
                     mint=mint,
@@ -1016,7 +1025,7 @@ class RadarEngine:
                     kind="curve",
                     event_id=f"curve:{mint}:{now}",
                     evidence={**{k: v for k, v in report.items()
-                        if k not in ("price_state", "price_status")}, "poll_tier": tier},
+                        if k not in ("price_state", "price_status", "_reserve_rejection", "_reserve_rejection_failed")}, "poll_tier": tier},
                 )
             )
         if (tier == 'hot' and not self.offline and self.settings.mode != 'DEMO'

@@ -289,7 +289,7 @@ class SolanaProvider(HttpProvider):
                 pass
         reports = {}
         for mint, account in zip(mints, values):
-            report = {"curve_progress": None, "data_quality": "UNKNOWN"}
+            report: dict[str, Any] = {"curve_progress": None, "data_quality": "UNKNOWN"}
             try:
                 curve = parse_curve(account)
                 progress = curve_progress(curve, self.global_cache) if self.global_cache else None
@@ -311,6 +311,8 @@ class SolanaProvider(HttpProvider):
                         result.get('context', {}).get('slot'), requested_at, acquired_at)
                 except (ValueError, TypeError, KeyError, IndexError) as exc:
                     report['price_status'] = getattr(exc, 'reason', 'NO_VERIFIED_CURVE')
+                    report['_reserve_rejection'] = getattr(exc, '_reserve_rejection', None)
+                    report['_reserve_rejection_failed'] = getattr(exc, '_reserve_rejection_failed', False) is True
             reports[mint] = report
         return reports
 

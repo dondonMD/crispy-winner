@@ -88,6 +88,17 @@ class PriceDiagnostics:
             self.counts["unresolved_at_previous_checkpoint"] += old["in_progress"]
             # This is an unknown checkpoint tail, NOT proof that requests failed.
 
+        from backend.app.reserve_rejection_diagnostics import ReserveRejections
+
+        self.reserve_rejections = ReserveRejections(old.get("reserve_rejections") if old else None, self.counts)
+        self.reserve_rejection_calculation_failures: int = 0
+        self.reserve_rejection_aggregation_failures: int = 0
+        retained = old.get("reserve_rejections") if old else None
+        for field in ("calculation", "aggregation"):
+            value = retained.get(field + "_failures", 0) if isinstance(retained, dict) else 0
+            setattr(self, "reserve_rejection_" + field + "_failures",
+                    value if type(value) is int and 0 <= value <= 2147483647 else 1)
+
     def note(self, mint, code, now=None):
         from solders.pubkey import Pubkey
 
@@ -289,6 +300,21 @@ class PriceDiagnostics:
 
     def snapshot(self, now=None):
         now = time.time() if now is None else now
+        try:
+            reserve = self.reserve_rejections.snapshot(self.counts)
+            if type(reserve) is not dict or type(reserve.get("reconciled")) is not bool:
+                raise ValueError("Invalid reserve diagnostic snapshot")
+            reserve["snapshot_available"] = True
+        except Exception:
+            # A telemetry snapshot failure cannot block the existing receipt/event path.
+            self.reserve_rejection_aggregation_failures = min(
+                2147483647, self.reserve_rejection_aggregation_failures + 1)
+            reserve = dict(version=1, snapshot_available=False, reconciled=False)
+        failed = bool(self.reserve_rejection_calculation_failures or self.reserve_rejection_aggregation_failures)
+        reserve.update(calculation_failures=self.reserve_rejection_calculation_failures,
+                       aggregation_failures=self.reserve_rejection_aggregation_failures,
+                       telemetry_integrity_failed=failed)
+        reserve["reconciled"] = reserve["reconciled"] and not failed
         fx = json.loads(json.dumps(self.fx))
         for row in fx.values():
             ref = row["reference"]
@@ -319,6 +345,7 @@ class PriceDiagnostics:
             sequence=self.sequence,
             status=self.status,
             counts=dict(self.counts),
+            reserve_rejections=reserve,
             in_progress=len(self.inflight),
             attempt_reconciled=(
                 self.counts["ATTEMPTED"]
@@ -345,6 +372,7 @@ class PriceDiagnostics:
             for k in (
                 "status",
                 "counts",
+                "reserve_rejections",
                 "in_progress",
                 "attempt_reconciled",
                 "fx",

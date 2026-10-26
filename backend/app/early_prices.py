@@ -42,7 +42,9 @@ def reserve_state(mint, address, curve_account, mint_account, quote_accounts, sl
         raise QuoteUnavailable("CURVE_ACCOUNT_LAYOUT") from None
     quote = WSOL if curve["quote_mint"] == ZERO else curve["quote_mint"]
     if quote not in QUOTES:
-        raise QuoteUnavailable("UNSUPPORTED_QUOTE")
+        failure = QuoteUnavailable("UNSUPPORTED_QUOTE")
+        setattr(failure, "_reserve_rejection", (0, 3))  # Numeric telemetry: unsupported identity, no address.
+        raise failure
     try:
         supply, decimals, _ = mint_info(mint_account)
     except QuoteUnavailable:
@@ -60,7 +62,19 @@ def reserve_state(mint, address, curve_account, mint_account, quote_accounts, sl
         or curve["is_mayhem_mode"]
         or any(curve[k] for k in ("depth", "post_complete_base_out", "post_complete_quote_in"))
     ):
-        raise QuoteUnavailable("UNSUPPORTED_CURVE_STATE")
+        failure = QuoteUnavailable("UNSUPPORTED_CURVE_STATE")
+        try:
+            from backend.app.reserve_rejection_diagnostics import condition_mask
+
+            mask = condition_mask(curve, supply)
+            if type(mask) is not int or not 0 <= mask < 64:
+                raise ValueError("Invalid reserve diagnostic mask")
+            setattr(failure, "_reserve_rejection", (mask, 1 if quote == WSOL else 2))
+        except Exception:
+            # Only optional telemetry is isolated; the original rejection is never replaced.
+            setattr(failure, "_reserve_rejection", (0, 1 if quote == WSOL else 2))
+            setattr(failure, "_reserve_rejection_failed", True)
+        raise failure
     base, q = curve["virtual_token_reserves"], curve["virtual_quote_reserves"]
     if (
         min(base, q, curve["real_token_reserves"], supply) <= 0
