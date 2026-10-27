@@ -31,6 +31,75 @@ TRADE_NAMES = {"buy", "buy_exact_sol_in", "buy_v2", "buy_v3", "buy_exact_quote_i
                "buy_exact_quote_in_v3", "sell", "sell_v2", "sell_v3"}
 CLASSIFICATIONS = ("UNTRACKED_CONFIRMED", "TRACKED_AFFECTED", "UNSUPPORTED_PUMP_TRADE",
                    "TRANSACTION_UNAVAILABLE", "TRANSACTION_FAILED", "MALFORMED")
+CPI_CONDITIONS = ("not_inner", "account_count", "authority", "short_data", "unknown_event")
+CPI_MAX = (1 << 63) - 1
+
+
+def cpi_diagnostics():
+    return dict(version=1, rejected_instructions=0, masks=[0] * 32,
+                conditions=dict.fromkeys(CPI_CONDITIONS, 0))
+
+
+def cpi_failure_mask(data, inner, accounts, keys):
+    # Diagnostic only; the original acceptance predicate below remains authoritative.
+    flags = (not inner, len(accounts) != 1,
+             len(accounts) == 1 and keys[accounts[0]] != EVENT_AUTHORITY,
+             len(data) < 16, len(data) >= 16 and data[8:16] not in EVENTS)
+    return sum(1 << i for i, flag in enumerate(flags) if flag)
+
+
+def record_cpi_failure(metrics, data, inner, accounts, keys):
+    if metrics is None:
+        return
+    try:
+        old = metrics.get("event_cpi_rejections", cpi_diagnostics())
+        if (len(old["masks"]) != 32 or len(old["conditions"]) != len(CPI_CONDITIONS)
+                or set(old["conditions"]) != set(CPI_CONDITIONS)
+                or any(type(n) is not int or not 0 <= n < CPI_MAX
+                for n in [old["rejected_instructions"], *old["masks"], *old["conditions"].values()])):
+            raise ValueError("Invalid diagnostic counters")
+        mask = cpi_failure_mask(data, inner, accounts, keys)
+        if not 0 < mask < 32:
+            raise ValueError("Invalid diagnostic mask")
+        # Stage the whole update; a failed calculation cannot partially credit success.
+        new = dict(version=1, rejected_instructions=old["rejected_instructions"] + 1,
+                   masks=list(old["masks"]), conditions={k: old["conditions"][k] for k in CPI_CONDITIONS})
+        new["masks"][mask] += 1
+        for index, name in enumerate(CPI_CONDITIONS):
+            new["conditions"][name] += bool(mask & (1 << index))
+        metrics["event_cpi_rejections"] = new
+    except Exception:
+        # Never replace a core unsupported/malformed result with a telemetry exception.
+        cpi_integrity_failure(metrics)
+
+
+def cpi_integrity_failure(metrics):
+    value = metrics.get("event_cpi_integrity_failures", 0)
+    metrics["event_cpi_integrity_failures"] = min(CPI_MAX, value + 1) if type(value) is int else 1
+
+
+def cpi_snapshot(metrics):
+    try:
+        current = metrics["event_cpi_rejections"]
+        failures = metrics.get("event_cpi_integrity_failures", 0)
+        if (not isinstance(current["masks"], list) or len(current["masks"]) != 32
+                or len(current["conditions"]) != len(CPI_CONDITIONS)
+                or set(current["conditions"]) != set(CPI_CONDITIONS)
+                or any(type(n) is not int or not 0 <= n <= CPI_MAX for n in
+                    [current["rejected_instructions"], *current["masks"], *current["conditions"].values(), failures])):
+            raise ValueError("Invalid diagnostic shape")
+        return dict(version=1, rejected_instructions=current["rejected_instructions"],
+            masks=list(current["masks"]), conditions={k: current["conditions"][k] for k in CPI_CONDITIONS},
+            integrity_failures=failures, available=True,
+            reconciled=not failures and sum(current["masks"]) == current["rejected_instructions"]
+            and current["masks"][0] == 0
+            and current["rejected_instructions"] == metrics["unsupported_instruction_counts"]["other"]
+            and all(current["conditions"][key] == sum(n for mask, n in enumerate(current["masks"])
+                    if mask & (1 << index)) for index, key in enumerate(CPI_CONDITIONS)))
+    except Exception:
+        cpi_integrity_failure(metrics)
+        return {**cpi_diagnostics(), "integrity_failures": metrics["event_cpi_integrity_failures"],
+                "available": False, "reconciled": False}
 
 
 def decode_base58(value):
@@ -167,6 +236,8 @@ def transaction_impact(result, signature, slot, tracked, diagnostics=None, migra
             if definition is None:
                 multi_hop.count(diagnostics, "unsupported_instruction_counts",
                                 subtype="other" if data[:8] == EVENT_CPI else "unknown_discriminator")
+                if data[:8] == EVENT_CPI:
+                    record_cpi_failure(diagnostics, data, is_inner, accounts, keys)
                 unsupported = True
                 continue
             name = definition["name"]
@@ -270,6 +341,7 @@ class TruncationRecovery:
                        "recovered_migration_last_ages": {},
                        "instruction_counts": dict.fromkeys((i["name"] for i in INSTRUCTIONS.values()), 0),
                        "instruction_histogram_transactions": 0}
+        self.health.update(event_cpi_rejections=cpi_diagnostics(), event_cpi_integrity_failures=0)
 
     def submit(self, signature, slot, observed):
         self.health["submitted"] += 1
@@ -297,7 +369,8 @@ class TruncationRecovery:
         return any(r.observed >= max(now - seconds, token.trade_tracking_since) for r in self.pending.values())
 
     def snapshot(self):
-        return {**self.health, **self.rpc.truncation_metrics, "scheduling": self.metrics.snapshot(),
+        return {**self.health, "event_cpi_rejections": cpi_snapshot(self.health),
+                **self.rpc.truncation_metrics, "scheduling": self.metrics.snapshot(),
                 "in_flight": self.in_flight, "pending": len(self.pending),
                 "accepted_reconciled": self.health["accepted"] == (
                     self.health["completed"] + self.health["shutdown_unresolved"] + len(self.pending)),

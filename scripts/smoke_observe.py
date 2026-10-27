@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from backend.app.config import Settings
 from backend.app.engine import RadarEngine
+from scripts.smoke_evidence_diagnostics import SmokeTiming, capture, bounded_section
 
 
 async def main(seconds=65, max_deep=25):
@@ -52,6 +53,8 @@ async def main(seconds=65, max_deep=25):
         original_inspect = engine.rpc.inspect
         original = engine.rpc.curve_progress_batch
         original_process = engine.process
+        timing = SmokeTiming(engine.queue)
+        detach_timing = timing.attach(engine)
 
         async def counted(mints, batch_size, **kwargs):
             nonlocal curve_attempts, successes
@@ -64,7 +67,12 @@ async def main(seconds=65, max_deep=25):
             nonlocal launch_count, migrations
             recovery_stale_before = engine.recovery.health["recovered_migration_recovery_freshness_rejected"]
             previous_graduation = engine.tokens[event.mint].graduation if event.mint in engine.tokens else None
-            accepted = original_process(event, now, queued=queued)
+            stamp = timing.safe("started", event, now, queued)
+            try:
+                accepted = original_process(event, now, queued=queued)
+            finally:
+                timing.safe("finished", stamp, event, queued, getattr(engine, "_process_reason", "UNAVAILABLE"),
+                            engine.settings.max_data_age_seconds)
             if event.kind == "migration" and not accepted:
                 if event.source == "Recovered Pump instruction":
                     reason = "stale" if engine.recovery.health["recovered_migration_recovery_freshness_rejected"] > recovery_stale_before else "other"
@@ -72,7 +80,7 @@ async def main(seconds=65, max_deep=25):
                     reason = "stale" if abs((now if now is not None else event.ts) - event.ts) > engine.settings.max_data_age_seconds else "other"
                 migration_rejections[reason] += 1
             if event.kind == "trade" and not accepted:
-                reason = "stale" if abs((now if now is not None else event.ts) - event.ts) > engine.settings.max_data_age_seconds else "other"
+                reason = "stale" if engine._process_reason == "stale" else "other"
                 trade_rejections[reason] += 1
             if accepted:
                 launch_count += event.kind == "create"
@@ -108,6 +116,9 @@ async def main(seconds=65, max_deep=25):
         start_cpu = time.process_time()
         start_wall = time.time()
         start = time.monotonic()
+        report = None
+        pre_shutdown = None
+        observation_failure = None
         await engine.start()
         try:
             while time.monotonic() - start < seconds:
@@ -308,10 +319,40 @@ async def main(seconds=65, max_deep=25):
                 "trade_subscriptions": len(engine.pump.subscribed),
                 "paper_cash": engine.paper.state["cash"],
             }
-            Path("data/observe-smoke.json").write_text(json.dumps(report, indent=2))
-            print(json.dumps(report, indent=2))
+            # Detach all pre-stop references; shutdown legitimately mutates continuity.
+            report = json.loads(json.dumps(report, allow_nan=False))
+            pre_shutdown = capture(engine, timing)
+        except BaseException as exc:
+            observation_failure = exc
+            raise
         finally:
-            await engine.stop()
+            stop_failure = None
+            try:
+                await engine.stop()
+            except BaseException as exc:
+                stop_failure = exc
+                raise
+            finally:
+                try:
+                    timing.safe("close")
+                    detach_timing()
+                    post_shutdown = capture(engine, timing)
+                    if report is None:
+                        report = dict(status="PRE_SHUTDOWN_REPORT_UNAVAILABLE")
+                    report["evidence_diagnostics"] = bounded_section(pre_shutdown, post_shutdown,
+                        "RETURNED" if stop_failure is None else "CANCELLED" if isinstance(
+                            stop_failure, asyncio.CancelledError) else "FAILED")
+                    report["trade_rejection_policy"] = "native_process_disposition_v1"
+                    Path("data/observe-smoke.json").write_text(json.dumps(report, allow_nan=False, separators=(",", ":")))
+                    print(json.dumps(report, indent=2, allow_nan=False))
+                except Exception:
+                    timing.failure()
+                    # Cleanup retains its original precedence. Report failures must
+                    # not replace an observation failure when cleanup succeeded.
+                    primary = stop_failure if stop_failure is not None else observation_failure
+                    if primary is None:
+                        raise
+                    primary.add_note("Smoke diagnostic report publication failed; report integrity is unverified.")
 
 
 if __name__ == "__main__":
